@@ -35,15 +35,43 @@ export const useTilesetStore = create<TilesetState>((set, get) => ({
     const rows = Math.floor(tileset.height / tileSize.height);
     const newTiles: Tile[] = [];
     let id = 0;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    canvas.width = tileSize.width;
+    canvas.height = tileSize.height;
     for (let y = 0; y < rows; y++) {
       for (let x = 0; x < cols; x++) {
-        newTiles.push({
-          id: id++,
-          x: x * tileSize.width,
-          y: y * tileSize.height,
-          width: tileSize.width,
-          height: tileSize.height,
-        });
+        ctx.clearRect(0, 0, tileSize.width, tileSize.height);
+        ctx.drawImage(
+          tileset,
+          x * tileSize.width,
+          y * tileSize.height,
+          tileSize.width,
+          tileSize.height,
+          0,
+          0,
+          tileSize.width,
+          tileSize.height
+        );
+        const imageData = ctx.getImageData(0, 0, tileSize.width, tileSize.height);
+        const data = imageData.data;
+        let visible = false;
+        for (let i = 3; i < data.length; i += 4) {
+          if (data[i] > 0) {
+            visible = true;
+            break;
+          }
+        }
+        if (visible) {
+          newTiles.push({
+            id: id++,
+            x: x * tileSize.width,
+            y: y * tileSize.height,
+            width: tileSize.width,
+            height: tileSize.height,
+          });
+        }
       }
     }
     setTiles(newTiles);
