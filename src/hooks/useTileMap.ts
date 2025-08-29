@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react';
-import type { TileMap } from '../types/index';
+import { create } from 'zustand';
+import type { TileMap, Layer } from '../types/index';
 
-function createDefaultLayer(width: number, height: number) {
+function createDefaultLayer(width: number, height: number): Layer {
   return {
     id: 'layer-1',
     name: 'Layer 1',
@@ -11,26 +11,54 @@ function createDefaultLayer(width: number, height: number) {
   };
 }
 
-export function useTileMap() {
-  const [tileMap, setTileMap] = useState<TileMap>({
+function resizeLayerData(data: any[][], newWidth: number, newHeight: number) {
+  const resized = [];
+  for (let y = 0; y < newHeight; y++) {
+    const row = [];
+    for (let x = 0; x < newWidth; x++) {
+      row.push(data[y]?.[x] ?? null);
+    }
+    resized.push(row);
+  }
+  return resized;
+}
+
+interface TileMapState {
+  tileMap: TileMap;
+  setMapSize: (width: number, height: number) => void;
+  placeTile: (x: number, y: number, tileId: number) => void;
+}
+
+export const useTileMapStore = create<TileMapState>((set, get) => ({
+  tileMap: {
     width: 20,
     height: 15,
     tileSize: 32,
     layers: [createDefaultLayer(20, 15)],
-  });
-  const [activeLayerId, setActiveLayerId] = useState('layer-1');
-
-  const placeTile = useCallback((x: number, y: number, tileId: number) => {
-    setTileMap(prev => {
-      const layers = prev.layers.map(layer => {
-        if (layer.id !== activeLayerId) return layer;
-        const data = layer.data.map(row => [...row]);
-        data[y][x] = tileId;
-        return { ...layer, data };
-      });
-      return { ...prev, layers };
-    });
-  }, [activeLayerId]);
-
-  return { tileMap, setTileMap, activeLayerId, setActiveLayerId, placeTile };
-}
+  },
+  setMapSize: (width, height) => {
+    set(state => ({
+      tileMap: {
+        ...state.tileMap,
+        width,
+        height,
+        layers: state.tileMap.layers.map(layer => ({
+          ...layer,
+          data: resizeLayerData(layer.data, width, height),
+        })),
+      },
+    }));
+  },
+  placeTile: (x, y, tileId) => {
+    set(state => ({
+      tileMap: {
+        ...state.tileMap,
+        layers: state.tileMap.layers.map(layer => {
+          const data = layer.data.map(row => [...row]);
+          data[y][x] = tileId;
+          return { ...layer, data };
+        }),
+      },
+    }));
+  },
+}));
