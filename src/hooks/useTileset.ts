@@ -5,11 +5,11 @@ interface TilesetState {
   tileset: HTMLImageElement | null;
   tiles: Tile[];
   tileSize: { width: number; height: number };
-  activeTile: number | null;
+  activeTile: string | null;
   setTileset: (img: HTMLImageElement | null) => void;
   setTiles: (tiles: Tile[]) => void;
   setTileSize: (size: { width: number; height: number }) => void;
-  setActiveTile: (id: number | null) => void;
+  setActiveTile: (id: string | null) => void;
   loadTileset: (file: File) => void;
   extractTiles: () => void;
 }
@@ -34,7 +34,6 @@ export const useTilesetStore = create<TilesetState>((set, get) => ({
     const cols = Math.floor(tileset.width / tileSize.width);
     const rows = Math.floor(tileset.height / tileSize.height);
     const newTiles: Tile[] = [];
-    let id = 0;
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -65,7 +64,7 @@ export const useTilesetStore = create<TilesetState>((set, get) => ({
         }
         if (visible) {
           newTiles.push({
-            id: id++,
+            id: `${x}_${y}`,
             x: x * tileSize.width,
             y: y * tileSize.height,
             width: tileSize.width,

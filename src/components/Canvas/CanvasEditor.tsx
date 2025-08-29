@@ -5,11 +5,14 @@ export default function CanvasEditor() {
   const tileMap = useTileMapStore(s => s.tileMap);
   const placeTile = useTileMapStore(s => s.placeTile);
   const tileset = useTilesetStore(s => s.tileset);
-  const tileSize = useTilesetStore(s => s.tileSize);
   const activeTile = useTilesetStore(s => s.activeTile);
+  const tiles = useTilesetStore(s => s.tiles);
 
   function handleCellClick(x: number, y: number) {
-    if (activeTile != null) placeTile(x, y, activeTile);
+    if (activeTile != null) {
+      console.log('Placing tile:', activeTile, 'at position:', x, y);
+      placeTile(x, y, activeTile);
+    }
   }
 
   return (
@@ -28,14 +31,29 @@ export default function CanvasEditor() {
           }}
         >
           {tileMap.layers[0].data.map((row, y) =>
-            row.map((cell, x) => (
-              <div
-                key={`${x}-${y}`}
-                className="border border-gray-200 w-full h-full cursor-pointer relative"
-                style={{ width: tileMap.tileSize, height: tileMap.tileSize, background: cell != null && tileset ? `url(${tileset.src})` : undefined, backgroundPosition: cell != null && tileset ? `-${cell * tileSize.width}px 0` : undefined, backgroundSize: tileset ? `${tileset.width}px ${tileset.height}px` : undefined }}
-                onClick={() => handleCellClick(x, y)}
-              />
-            ))
+            row.map((cell, x) => {
+              const tile = tiles.find(t => t.id === cell);
+              if (cell && tile) {
+                console.log('Rendering cell:', cell, 'found tile:', tile, 'bg-position:', `-${tile.x}px -${tile.y}px`);
+              }
+              const scaleX = tile ? tileMap.tileSize / tile.width : 1;
+              const scaleY = tile ? tileMap.tileSize / tile.height : 1;
+              return (
+                <div
+                  key={`${x}-${y}`}
+                  className="border border-gray-200 w-full h-full cursor-pointer relative"
+                  style={{
+                    width: tileMap.tileSize,
+                    height: tileMap.tileSize,
+                    background: tile && tileset ? `url(${tileset.src})` : undefined,
+                    backgroundPosition: tile && tileset ? `-${tile.x * scaleX}px -${tile.y * scaleY}px` : undefined,
+                    backgroundSize: tileset ? `${tileset.width * scaleX}px ${tileset.height * scaleY}px` : undefined,
+                    imageRendering: 'pixelated',
+                  }}
+                  onClick={() => handleCellClick(x, y)}
+                />
+              );
+            })
           )}
         </div>
       </div>

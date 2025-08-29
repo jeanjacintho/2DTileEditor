@@ -8,7 +8,7 @@ function createDefaultLayer(width: number, height: number): Layer {
     name: 'Layer 1',
     visible: true,
     opacity: 1,
-    data: Array.from({ length: height }, () => Array(width).fill(null)),
+    data: Array.from({ length: height }, () => Array(width).fill(null)), // string | null
   };
 }
 
@@ -29,7 +29,7 @@ interface TileMapState {
   history: TileMap[];
   future: TileMap[];
   setMapSize: (width: number, height: number) => void;
-  placeTile: (x: number, y: number, tileId: number) => void;
+  placeTile: (x: number, y: number, tileId: string) => void;
   undo: () => void;
   redo: () => void;
 }

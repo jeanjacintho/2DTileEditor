@@ -1,5 +1,5 @@
 export interface Tile {
-  id: number;
+  id: string;
   x: number;
   y: number;
   width: number;
@@ -11,7 +11,7 @@ export interface Layer {
   name: string;
   visible: boolean;
   opacity: number;
-  data: number[][];
+  data: (string | null)[][];
 }
 
 export interface TileMap {
