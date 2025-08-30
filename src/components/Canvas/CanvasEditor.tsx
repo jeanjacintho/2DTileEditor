@@ -6,13 +6,28 @@ export default function CanvasEditor() {
   const placeTile = useTileMapStore(s => s.placeTile);
   const tileset = useTilesetStore(s => s.tileset);
   const activeTile = useTilesetStore(s => s.activeTile);
-  const tiles = useTilesetStore(s => s.tiles);
+  const tileSize = useTilesetStore(s => s.tileSize);
 
   function handleCellClick(x: number, y: number) {
     if (activeTile != null) {
       console.log('Placing tile:', activeTile, 'at position:', x, y);
       placeTile(x, y, activeTile);
     }
+  }
+
+  function renderTile(cell: string | null) {
+    if (!cell || !tileset) return null;
+    
+    // Parse tile coordinates from cell ID (format: "x_y")
+    const [x, y] = cell.split('_').map(Number);
+    if (isNaN(x) || isNaN(y)) return null;
+
+    return {
+      x: x * tileSize.width,
+      y: y * tileSize.height,
+      width: tileSize.width,
+      height: tileSize.height,
+    };
   }
 
   return (
@@ -32,12 +47,10 @@ export default function CanvasEditor() {
         >
           {tileMap.layers[0].data.map((row, y) =>
             row.map((cell, x) => {
-              const tile = tiles.find(t => t.id === cell);
-              if (cell && tile) {
-                console.log('Rendering cell:', cell, 'found tile:', tile, 'bg-position:', `-${tile.x}px -${tile.y}px`);
-              }
+              const tile = renderTile(cell);
               const scaleX = tile ? tileMap.tileSize / tile.width : 1;
               const scaleY = tile ? tileMap.tileSize / tile.height : 1;
+              
               return (
                 <div
                   key={`${x}-${y}`}

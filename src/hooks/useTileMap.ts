@@ -1,14 +1,14 @@
 import { create } from 'zustand';
 import { produce } from 'immer';
-import type { TileMap, Layer } from '../types/index';
+import type { TileMap } from '../types/index';
 
-function createDefaultLayer(width: number, height: number): Layer {
+function createDefaultLayer(width: number, height: number) {
   return {
-    id: 'layer-1',
-    name: 'Layer 1',
+    id: 'main-layer',
+    name: 'Main Layer',
     visible: true,
     opacity: 1,
-    data: Array.from({ length: height }, () => Array(width).fill(null)), // string | null
+    data: Array.from({ length: height }, () => Array(width).fill(null)),
   };
 }
 
@@ -17,7 +17,7 @@ function resizeLayerData(data: any[][], newWidth: number, newHeight: number) {
   for (let y = 0; y < newHeight; y++) {
     const row = [];
     for (let x = 0; x < newWidth; x++) {
-      row.push(data[y]?.[x] ?? null);
+      row.push(y < data.length && x < data[y].length ? data[y][x] : null);
     }
     resized.push(row);
   }
@@ -34,7 +34,7 @@ interface TileMapState {
   redo: () => void;
 }
 
-export const useTileMapStore = create<TileMapState>((set, get) => ({
+export const useTileMapStore = create<TileMapState>((set) => ({
   tileMap: {
     width: 20,
     height: 15,
@@ -48,9 +48,7 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
       const next = produce(state.tileMap, draft => {
         draft.width = width;
         draft.height = height;
-        draft.layers.forEach(layer => {
-          layer.data = resizeLayerData(layer.data, width, height);
-        });
+        draft.layers[0].data = resizeLayerData(draft.layers[0].data, width, height);
       });
       return {
         tileMap: next,
@@ -62,11 +60,7 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
   placeTile: (x, y, tileId) => {
     set(state => {
       const next = produce(state.tileMap, draft => {
-        draft.layers.forEach(layer => {
-          if (layer.visible) {
-            layer.data[y][x] = tileId;
-          }
-        });
+        draft.layers[0].data[y][x] = tileId;
       });
       return {
         tileMap: next,
