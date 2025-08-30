@@ -11,6 +11,7 @@ export interface Layer {
   name: string;
   visible: boolean;
   opacity: number;
+  isCollision: boolean;
   data: (string | null)[][];
 }
 

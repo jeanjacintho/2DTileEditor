@@ -7,6 +7,7 @@ export default function Toolbar() {
   const setMapSize = useTileMapStore(s => s.setMapSize);
   const undo = useTileMapStore(s => s.undo);
   const redo = useTileMapStore(s => s.redo);
+  const activeLayerId = useTileMapStore(s => s.activeLayerId);
   const tileSize = useTilesetStore(s => s.tileSize);
   const setTileSize = useTilesetStore(s => s.setTileSize);
   const [width, setWidth] = useState(tileMap.width);
@@ -21,6 +22,8 @@ export default function Toolbar() {
     setTileSizeValue(value);
     setTileSize({ width: value, height: value });
   }
+
+  const activeLayer = tileMap.layers.find(layer => layer.id === activeLayerId);
 
   return (
     <header className="w-full h-12 bg-gray-100 border-b flex items-center px-4 gap-4">
@@ -72,6 +75,16 @@ export default function Toolbar() {
         >
           Aplicar
         </button>
+      </div>
+
+      <div className="flex items-center gap-2 ml-auto">
+        <span className="text-sm text-gray-600">Layer Ativa:</span>
+        <span className="text-sm font-medium bg-blue-100 px-2 py-1 rounded">
+          {activeLayer?.name || 'Nenhuma'}
+        </span>
+        <span className="text-sm text-gray-500">
+          ({tileMap.layers.length} layers)
+        </span>
       </div>
     </header>
   );

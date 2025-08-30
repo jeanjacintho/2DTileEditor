@@ -1,13 +1,14 @@
 import { create } from 'zustand';
 import { produce } from 'immer';
-import type { TileMap } from '../types/index';
+import type { TileMap, Layer } from '../types/index';
 
-function createDefaultLayer(width: number, height: number) {
+function createDefaultLayer(width: number, height: number): Layer {
   return {
-    id: 'main-layer',
-    name: 'Main Layer',
+    id: Date.now().toString(),
+    name: "Layer_0",
     visible: true,
     opacity: 1,
+    isCollision: false,
     data: Array.from({ length: height }, () => Array(width).fill(null)),
   };
 }
@@ -28,10 +29,19 @@ interface TileMapState {
   tileMap: TileMap;
   history: TileMap[];
   future: TileMap[];
+  activeLayerId: string | null;
   setMapSize: (width: number, height: number) => void;
   placeTile: (x: number, y: number, tileId: string) => void;
   undo: () => void;
   redo: () => void;
+  // Layer management
+  addLayer: () => void;
+  deleteLayer: (layerId: string) => void;
+  duplicateLayer: (layerId: string) => void;
+  setLayerVisible: (layerId: string, visible: boolean) => void;
+  setLayerName: (layerId: string, name: string) => void;
+  setActiveLayer: (layerId: string) => void;
+  setLayerCollision: (layerId: string, isCollision: boolean) => void;
 }
 
 export const useTileMapStore = create<TileMapState>((set) => ({
@@ -43,12 +53,15 @@ export const useTileMapStore = create<TileMapState>((set) => ({
   },
   history: [],
   future: [],
+  activeLayerId: null,
   setMapSize: (width, height) => {
     set(state => {
       const next = produce(state.tileMap, draft => {
         draft.width = width;
         draft.height = height;
-        draft.layers[0].data = resizeLayerData(draft.layers[0].data, width, height);
+        draft.layers.forEach(layer => {
+          layer.data = resizeLayerData(layer.data, width, height);
+        });
       });
       return {
         tileMap: next,
@@ -60,7 +73,10 @@ export const useTileMapStore = create<TileMapState>((set) => ({
   placeTile: (x, y, tileId) => {
     set(state => {
       const next = produce(state.tileMap, draft => {
-        draft.layers[0].data[y][x] = tileId;
+        const activeLayer = draft.layers.find(layer => layer.id === state.activeLayerId);
+        if (activeLayer && activeLayer.visible) {
+          activeLayer.data[y][x] = tileId;
+        }
       });
       return {
         tileMap: next,
@@ -90,6 +106,126 @@ export const useTileMapStore = create<TileMapState>((set) => ({
         tileMap: next,
         history: [...state.history, state.tileMap],
         future: newFuture,
+      };
+    });
+  },
+  // Layer management functions
+  addLayer: () => {
+    set(state => {
+      const newLayer: Layer = {
+        id: Date.now().toString(),
+        name: `Layer_${state.tileMap.layers.length}`,
+        visible: true,
+        opacity: 1,
+        isCollision: false,
+        data: Array.from({ length: state.tileMap.height }, () => Array(state.tileMap.width).fill(null)),
+      };
+      
+      const next = produce(state.tileMap, draft => {
+        draft.layers.unshift(newLayer); // Add to beginning instead of end
+      });
+      
+      return {
+        tileMap: next,
+        activeLayerId: newLayer.id,
+        history: [...state.history, state.tileMap],
+        future: [],
+      };
+    });
+  },
+  deleteLayer: (layerId) => {
+    set(state => {
+      if (state.tileMap.layers.length <= 1) return state; // Don't delete the last layer
+      
+      const next = produce(state.tileMap, draft => {
+        draft.layers = draft.layers.filter(layer => layer.id !== layerId);
+      });
+      
+      // Set new active layer if the deleted one was active
+      let newActiveLayerId = state.activeLayerId;
+      if (state.activeLayerId === layerId) {
+        newActiveLayerId = next.layers[0]?.id || null;
+      }
+      
+      return {
+        tileMap: next,
+        activeLayerId: newActiveLayerId,
+        history: [...state.history, state.tileMap],
+        future: [],
+      };
+    });
+  },
+  duplicateLayer: (layerId) => {
+    set(state => {
+      const sourceLayer = state.tileMap.layers.find(layer => layer.id === layerId);
+      if (!sourceLayer) return state;
+      
+      const duplicatedLayer: Layer = {
+        id: Date.now().toString(),
+        name: `${sourceLayer.name} (Copy)`,
+        visible: sourceLayer.visible,
+        opacity: sourceLayer.opacity,
+        isCollision: sourceLayer.isCollision,
+        data: sourceLayer.data.map(row => [...row]), // Deep copy
+      };
+      
+      const next = produce(state.tileMap, draft => {
+        draft.layers.unshift(duplicatedLayer);
+      });
+      
+      return {
+        tileMap: next,
+        activeLayerId: duplicatedLayer.id,
+        history: [...state.history, state.tileMap],
+        future: [],
+      };
+    });
+  },
+  setLayerVisible: (layerId, visible) => {
+    set(state => {
+      const next = produce(state.tileMap, draft => {
+        const layer = draft.layers.find(l => l.id === layerId);
+        if (layer) {
+          layer.visible = visible;
+        }
+      });
+      return {
+        tileMap: next,
+        history: [...state.history, state.tileMap],
+        future: [],
+      };
+    });
+  },
+  setLayerName: (layerId, name) => {
+    set(state => {
+      const next = produce(state.tileMap, draft => {
+        const layer = draft.layers.find(l => l.id === layerId);
+        if (layer) {
+          layer.name = name;
+        }
+      });
+      return {
+        tileMap: next,
+        history: [...state.history, state.tileMap],
+        future: [],
+      };
+    });
+  },
+  setActiveLayer: (layerId) => {
+    set({ activeLayerId: layerId });
+  },
+  setLayerCollision: (layerId, isCollision) => {
+    set(state => {
+      const next = produce(state.tileMap, draft => {
+        const layer = draft.layers.find(l => l.id === layerId);
+        if (layer) {
+          layer.isCollision = isCollision;
+        }
+      });
+      return {
+        tileMap: next,
+        history: [...state.history, state.tileMap],
+        future: [],
       };
     });
   },
