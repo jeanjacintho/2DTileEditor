@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useTileMapStore } from '../../hooks/useTileMap';
 import { useTilesetStore } from '../../hooks/useTileset';
-import { Download } from 'lucide-react';
+import { Download, Redo, Undo } from '@nsmr/pixelart-react';
+import Input from '../UI/Input';
+import Button from '../UI/Button';
 
 export default function Toolbar() {
   const tileMap = useTileMapStore(s => s.tileMap);
@@ -23,53 +25,54 @@ export default function Toolbar() {
   const activeLayer = tileMap.layers.find(layer => layer.id === activeLayerId);
 
   return (
-    <header className="bg-white border-b px-4 py-2 flex items-center justify-between gap-4">
+    <header className="bg-custom-medium-gray border-b border-custom-light-gray px-4 flex items-center justify-between gap-4 h-16 text-custom-white">
       <div className="flex items-center gap-2">
-        <button
+        <Button variant='secondary'
           onClick={undo}
-          className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+          className="flex items-center gap-2"
         >
+          <Undo size={16} />
           Undo
-        </button>
-        <button
+        </Button>
+        <Button variant='secondary'
           onClick={redo}
-          className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+          className="flex items-center gap-2"
         >
+          <Redo size={16} />
           Redo
-        </button>
+        </Button>
       </div>
 
-      <div className="flex items-center gap-2">
-        <label className="flex items-center gap-1 text-sm">
-          <span>Tamanho dos Tiles:</span>
-          <input
-            type="number"
-            value={tileSizeValue}
-            onChange={(e) => handleTileSizeChange(Math.max(1, Number(e.target.value)))}
-            className="w-16 px-2 py-1 border rounded text-sm"
-            min="1"
-          />
-        </label>
+      <div className="flex items-center gap-2 whitespace-nowrap">
+        <span className="text-sm text-custom-white">Tile size:</span>
+        <Input
+          type="number"
+          value={tileSizeValue}
+          onChange={(e) => handleTileSizeChange(Math.max(1, Number(e.target.value)))}
+          min="1"
+          size="md"
+          className='w-14'
+          placeholder="32"
+        />
       </div>
 
       <div className="flex items-center gap-2 ml-auto">
-        <span className="text-sm text-gray-600">
+        <span className="text-sm text-custom-light-gray">
           Mapa: {bounds.width}×{bounds.height}
         </span>
-        <span className="text-sm text-gray-600">
+        <span className="text-sm text-custom-light-gray">
           Layer Ativa: {activeLayer?.name || 'Nenhuma'}
         </span>
-        <span className="text-sm text-gray-600">
+        <span className="text-sm text-custom-light-gray">
           ({tileMap.layers.length} layers)
         </span>
-        <button
+        <Button
           onClick={() => exportMap(tileSize.width)}
-          className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm flex items-center gap-1"
-          title="Exportar Mapa (JSON)"
+          title="Export Map (JSON)"
         >
           <Download size={14} />
-          Exportar
-        </button>
+          Export
+        </Button>
       </div>
     </header>
   );

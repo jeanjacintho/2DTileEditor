@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { useTilesetStore } from '../../hooks/useTileset';
+import { Upload } from '@nsmr/pixelart-react';
 
 export default function TilesetLoader() {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -22,7 +23,7 @@ export default function TilesetLoader() {
   return (
     <div className="flex flex-col items-center gap-3 w-full">
       <div
-        className="border-dashed border-2 border-gray-300 rounded-lg p-4 flex flex-col items-center justify-center min-h-[100px] bg-white w-full cursor-pointer hover:border-blue-400 transition-colors"
+        className="border-dashed border-2 border-custom-light-gray rounded-lg p-4 flex flex-col items-center justify-center min-h-[100px] bg-custom-medium-gray w-full cursor-pointer hover:border-custom-color transition-colors"
         onDrop={handleDrop}
         onDragOver={e => e.preventDefault()}
         onClick={() => inputRef.current?.click()}
@@ -37,13 +38,13 @@ export default function TilesetLoader() {
         />
         {tileset ? (
           <div className="text-center">
-            <img src={tileset.src} alt="Tileset" className="max-h-20 mb-2 mx-auto rounded border" />
-            <span className="text-sm text-gray-600">Tileset carregado</span>
+            <img src={tileset.src} alt="Tileset" className="max-h-20 mb-2 mx-auto rounded border border-custom-light-gray" />
+            <span className="text-sm text-custom-light-gray">Tileset carregado</span>
           </div>
         ) : (
           <div className="text-center">
             <div className="text-2xl mb-2">📁</div>
-            <span className="text-sm text-gray-600">Arraste uma imagem de tileset ou clique para selecionar</span>
+            <span className="text-sm text-custom-light-gray">Arraste uma imagem de tileset ou clique para selecionar</span>
           </div>
         )}
       </div>

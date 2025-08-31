@@ -101,7 +101,7 @@ export default function CanvasEditor() {
   }
 
   return (
-    <main className="flex-1 bg-white overflow-hidden relative">
+    <main className="flex-1 bg-custom-pure-black overflow-hidden relative">
       {/* Container para tiles com scroll */}
       <div 
         ref={containerRef}
@@ -120,8 +120,8 @@ export default function CanvasEditor() {
             className="absolute inset-0 pointer-events-none"
             style={{
               backgroundImage: `
-                linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0,0,0,0.1) 1px, transparent 1px)
+                linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
               `,
               backgroundSize: `${GRID_TILE_SIZE}px ${GRID_TILE_SIZE}px`,
               backgroundPosition: '0 0'

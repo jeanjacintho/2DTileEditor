@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useTileMapStore } from '../../hooks/useTileMap';
-import { Shield, Copy, Edit3, Trash2 } from 'lucide-react';
+import { Close, Copy, Edit, Minus, Plus, Shield, Trash, Visible } from '@nsmr/pixelart-react';
+import Input from '../UI/Input';
+import Button from '../UI/Button';
 
 export default function LayerPanel() {
   const tileMap = useTileMapStore(s => s.tileMap);
@@ -51,16 +53,18 @@ export default function LayerPanel() {
   }
 
   return (
-    <aside className="w-64 bg-gray-50 border-l h-full flex flex-col gap-2 p-2">
+    <div className="h-full flex flex-col text-custom-white">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="font-medium text-gray-700">Layers</h3>
-        <button
+        <h3 className="font-medium text-custom-white">Layers</h3>
+        <Button
+          variant="secondary"
           onClick={addLayer}
-          className="px-2 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+          className="flex items-center gap-2"
           title="Add Layer"
         >
-          +
-        </button>
+          <Plus size={14} />
+          Add Layer
+        </Button>
       </div>
 
       <div className="flex-1 overflow-auto">
@@ -69,10 +73,10 @@ export default function LayerPanel() {
           return (
             <div
               key={layer.id}
-              className={`mb-1 p-2 rounded border cursor-pointer transition-colors ${
+              className={`mb-1 px-4 py-3 cursor-pointer transition-colors shadow-button h-10 ${
                 activeLayerId === layer.id
-                  ? 'bg-blue-100 border-blue-300'
-                  : 'bg-white border-gray-200 hover:bg-gray-50'
+                  ? 'bg-custom-light-gray border-custom-light-gray'
+                  : 'bg-custom-medium-gray border-custom-light-gray hover:bg-custom-light-gray'
               }`}
               onClick={() => setActiveLayer(layer.id)}
             >
@@ -83,26 +87,23 @@ export default function LayerPanel() {
                     e.stopPropagation();
                     setLayerVisible(layer.id, !layer.visible);
                   }}
-                  className={`w-4 h-4 rounded ${
-                    layer.visible ? 'bg-blue-500' : 'bg-gray-300'
-                  }`}
+                  className='w-4 h-4'
                   title={layer.visible ? 'Hide Layer' : 'Show Layer'}
                 >
-                  {layer.visible && (
-                    <div className="w-2 h-2 bg-white rounded m-0.5"></div>
-                  )}
+                  {layer.visible ? <Visible size={14}/> : <Minus size={14}/>}
                 </button>
 
                 {/* Layer name */}
                 <div className="flex-1 min-w-0">
                   {editingLayerId === layer.id ? (
-                    <input
+                    <Input
                       type="text"
                       value={editingName}
                       onChange={(e) => setEditingName(e.target.value)}
                       onKeyDown={handleKeyPress}
                       onBlur={handleSaveName}
-                      className="w-full text-sm border rounded px-1"
+                      size="sm"
+                      className="text-sm"
                       autoFocus
                     />
                   ) : (
@@ -116,7 +117,7 @@ export default function LayerPanel() {
                 </div>
 
                 {/* Tile count indicator */}
-                <div className="text-xs text-gray-500 bg-gray-100 px-1 rounded">
+                <div className="text-xs text-custom-light-gray bg-custom-black px-1">
                   {tileCount}
                 </div>
 
@@ -130,8 +131,8 @@ export default function LayerPanel() {
                     }}
                     className={`w-4 h-4 ${
                       layer.isCollision 
-                        ? 'text-orange-600' 
-                        : 'text-gray-500 hover:text-orange-600'
+                        ? 'text-custom-color' 
+                        : 'text-custom-white hover:text-custom-color'
                     }`}
                     title={layer.isCollision ? 'Collision Layer (Active)' : 'Toggle Collision Layer'}
                   >
@@ -144,7 +145,7 @@ export default function LayerPanel() {
                       e.stopPropagation();
                       duplicateLayer(layer.id);
                     }}
-                    className="w-4 h-4 text-gray-500 hover:text-blue-600"
+                    className="w-4 h-4 text-custom-white hover:text-custom-color"
                     title="Duplicate Layer"
                   >
                     <Copy size={14} />
@@ -156,10 +157,10 @@ export default function LayerPanel() {
                       e.stopPropagation();
                       handleEditName(layer.id, layer.name);
                     }}
-                    className="w-4 h-4 text-gray-500 hover:text-green-600"
+                    className="w-4 h-4 text-custom-white hover:text-custom-color"
                     title="Rename Layer"
                   >
-                    <Edit3 size={14} />
+                    <Edit size={14} />
                   </button>
 
                   {/* Delete Layer */}
@@ -170,11 +171,11 @@ export default function LayerPanel() {
                         deleteLayer(layer.id);
                       }
                     }}
-                    className="w-4 h-4 text-gray-500 hover:text-red-600"
+                    className="w-4 h-4 text-custom-white hover:text-red-500"
                     title="Delete Layer"
                     disabled={tileMap.layers.length <= 1}
                   >
-                    <Trash2 size={14} />
+                    <Close size={14} />
                   </button>
                 </div>
               </div>
@@ -182,11 +183,6 @@ export default function LayerPanel() {
           );
         })}
       </div>
-
-      <div className="text-xs text-gray-500 mt-2">
-        <div>• Click to place tiles in active layer</div>
-        <div>• Active layer: {tileMap.layers.find(l => l.id === activeLayerId)?.name || 'None'}</div>
-      </div>
-    </aside>
+    </div>
   );
 }
