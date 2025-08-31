@@ -68,7 +68,7 @@ export default function TilesetGrid() {
     }
   };
 
-  const handleMouseEnter = (x: number, y: number, isRightClick: boolean = false) => {
+  const handleMouseEnter = (x: number, y: number) => {
     if (isDragging && lastSelectedTile && (lastSelectedTile.x !== x || lastSelectedTile.y !== y)) {
       selectTileFromGrid(x, y);
       setLastSelectedTile({ x, y });
@@ -187,11 +187,11 @@ export default function TilesetGrid() {
                         height: TILE_DISPLAY_SIZE,
                         cursor: isPanning ? 'grabbing' : 'grab',
                       }}
-                      onClick={(e) => selectTileFromGrid(x, y)}
+                      onClick={() => selectTileFromGrid(x, y)}
                       onMouseDown={(e) => handleMouseDown(x, y, e.button === 2, e.button === 1, e)}
                       onContextMenu={(e) => e.preventDefault()}
                       onMouseEnter={(e) => {
-                        handleMouseEnter(x, y, e.buttons === 2);
+                        handleMouseEnter(x, y);
                         if (isPanning) {
                           e.currentTarget.style.cursor = 'grabbing';
                         } else if (e.buttons === 1) {

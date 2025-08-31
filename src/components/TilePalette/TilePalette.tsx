@@ -1,4 +1,3 @@
-import TilesetLoader from '../TilesetLoader/TilesetLoader';
 import TilesetGrid from './TilesetGrid';
 import { useTilesetStore } from '../../hooks/useTileset';
 import LayerPanel from '../LayerPanel/LayerPanel';
@@ -6,7 +5,6 @@ import Button from '../UI/Button';
 import { Upload } from '@nsmr/pixelart-react';
 
 export default function TilePalette() {
-  const tileset = useTilesetStore(s => s.tileset);
 
   return (
     <aside className="w-96 bg-custom-black border-r border-custom-light-gray h-full flex flex-col gap-4 px-4 py-2">

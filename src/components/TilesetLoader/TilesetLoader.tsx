@@ -1,6 +1,5 @@
 import { useRef } from 'react';
 import { useTilesetStore } from '../../hooks/useTileset';
-import { Upload } from '@nsmr/pixelart-react';
 
 export default function TilesetLoader() {
   const inputRef = useRef<HTMLInputElement>(null);

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTileMapStore } from '../../hooks/useTileMap';
-import { Close, Copy, Edit, Minus, Plus, Shield, Trash, Visible } from '@nsmr/pixelart-react';
+import { Close, Copy, Edit, Minus, Plus, Shield, Visible } from '@nsmr/pixelart-react';
 import Input from '../UI/Input';
 import Button from '../UI/Button';
 
