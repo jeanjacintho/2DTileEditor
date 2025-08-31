@@ -42,6 +42,7 @@ interface TileMapState {
   setLayerName: (layerId: string, name: string) => void;
   setActiveLayer: (layerId: string) => void;
   setLayerCollision: (layerId: string, isCollision: boolean) => void;
+  exportMap: (tileSize: number) => void;
 }
 
 export const useTileMapStore = create<TileMapState>((set) => ({
@@ -122,7 +123,7 @@ export const useTileMapStore = create<TileMapState>((set) => ({
       };
       
       const next = produce(state.tileMap, draft => {
-        draft.layers.unshift(newLayer); // Add to beginning instead of end
+        draft.layers.unshift(newLayer); // Add to beginning (top) - visualmente em cima
       });
       
       return {
@@ -170,7 +171,7 @@ export const useTileMapStore = create<TileMapState>((set) => ({
       };
       
       const next = produce(state.tileMap, draft => {
-        draft.layers.unshift(duplicatedLayer);
+        draft.layers.unshift(duplicatedLayer); // Add to beginning (top) - visualmente em cima
       });
       
       return {
@@ -227,6 +228,94 @@ export const useTileMapStore = create<TileMapState>((set) => ({
         history: [...state.history, state.tileMap],
         future: [],
       };
+    });
+  },
+  exportMap: (tileSize) => {
+    set(state => {
+      // Converter o formato de dados para o formato especificado
+      // Ordem: primeiro layer primeiro (Layer_0, Layer_1, Layer_2, etc.)
+      // Como as layers estão em ordem reversa no array (mais nova primeiro), precisamos reverter para exportar na ordem cronológica
+      const layers = [...state.tileMap.layers].reverse().map(layer => {
+        const tiles: Array<{id: string, x: number, y: number}> = [];
+        
+        // Converter a matriz de dados para lista de tiles
+        for (let y = 0; y < layer.data.length; y++) {
+          for (let x = 0; x < layer.data[y].length; x++) {
+            const tileId = layer.data[y][x];
+            if (tileId !== null) {
+              tiles.push({
+                id: tileId,
+                x: x,
+                y: y
+              });
+            }
+          }
+        }
+        
+        return {
+          name: layer.name,
+          tiles: tiles,
+          collider: layer.isCollision
+        };
+      });
+      
+      const mapData = {
+        tileSize: tileSize,
+        mapWidth: state.tileMap.width,
+        mapHeight: state.tileMap.height,
+        layers: layers
+      };
+      
+      // Exportar map.json
+      const mapBlob = new Blob([JSON.stringify(mapData, null, 2)], { type: 'application/json' });
+      const mapUrl = URL.createObjectURL(mapBlob);
+      const mapLink = document.createElement('a');
+      mapLink.href = mapUrl;
+      mapLink.download = 'map.json';
+      document.body.appendChild(mapLink);
+      mapLink.click();
+      document.body.removeChild(mapLink);
+      URL.revokeObjectURL(mapUrl);
+      
+      // Gerar tiles.json baseado nos tiles usados no mapa
+      const usedTileIds = new Set<string>();
+      state.tileMap.layers.forEach(layer => {
+        layer.data.forEach(row => {
+          row.forEach(tileId => {
+            if (tileId !== null) {
+              usedTileIds.add(tileId);
+            }
+          });
+        });
+      });
+      
+      const tilesData = {
+        tileSize: tileSize,
+        spritesheet: "",
+        tiles: Array.from(usedTileIds).map(tileId => {
+          // Extrair coordenadas x, y do tileId (formato: "x_y")
+          const [x, y] = tileId.split('_').map(Number);
+          return {
+            id: tileId, // Manter o ID como string (igual ao referenciado no mapa)
+            x: x,
+            y: y,
+            collision: false // Sempre false pois collision é definido no mapa
+          };
+        }).sort((a, b) => a.id.localeCompare(b.id)) // Ordenar por ID string
+      };
+      
+      // Exportar tiles.json
+      const tilesBlob = new Blob([JSON.stringify(tilesData, null, 2)], { type: 'application/json' });
+      const tilesUrl = URL.createObjectURL(tilesBlob);
+      const tilesLink = document.createElement('a');
+      tilesLink.href = tilesUrl;
+      tilesLink.download = 'tiles.json';
+      document.body.appendChild(tilesLink);
+      tilesLink.click();
+      document.body.removeChild(tilesLink);
+      URL.revokeObjectURL(tilesUrl);
+      
+      return state;
     });
   },
 }));

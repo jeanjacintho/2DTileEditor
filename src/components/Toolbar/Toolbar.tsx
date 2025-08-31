@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useTileMapStore } from '../../hooks/useTileMap';
 import { useTilesetStore } from '../../hooks/useTileset';
+import { Download } from 'lucide-react';
 
 export default function Toolbar() {
   const tileMap = useTileMapStore(s => s.tileMap);
   const setMapSize = useTileMapStore(s => s.setMapSize);
   const undo = useTileMapStore(s => s.undo);
   const redo = useTileMapStore(s => s.redo);
+  const exportMap = useTileMapStore(s => s.exportMap);
   const activeLayerId = useTileMapStore(s => s.activeLayerId);
   const tileSize = useTilesetStore(s => s.tileSize);
   const setTileSize = useTilesetStore(s => s.setTileSize);
@@ -85,6 +87,15 @@ export default function Toolbar() {
         <span className="text-sm text-gray-500">
           ({tileMap.layers.length} layers)
         </span>
+        
+        <button
+          className="px-3 py-1 bg-green-500 text-white rounded text-sm flex items-center gap-1 hover:bg-green-600"
+          onClick={() => exportMap(tileSize.width)}
+          title="Exportar Mapa (JSON)"
+        >
+          <Download size={14} />
+          Exportar
+        </button>
       </div>
     </header>
   );
