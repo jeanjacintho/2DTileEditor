@@ -5,6 +5,7 @@ import { useTilesetStore } from '../../hooks/useTileset';
 export default function CanvasEditor() {
   const tileMap = useTileMapStore(s => s.tileMap);
   const placeTile = useTileMapStore(s => s.placeTile);
+  const removeTile = useTileMapStore(s => s.removeTile);
   const getMapBounds = useTileMapStore(s => s.getMapBounds);
   const tileset = useTilesetStore(s => s.tileset);
   const activeTile = useTilesetStore(s => s.activeTile);
@@ -12,10 +13,19 @@ export default function CanvasEditor() {
   
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [scrollPosition, setScrollPosition] = useState({ x: 0, y: 0 });
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isErasing, setIsErasing] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const [lastDrawnCell, setLastDrawnCell] = useState<{ x: number; y: number } | null>(null);
+  const [lastErasedCell, setLastErasedCell] = useState<{ x: number; y: number } | null>(null);
+  const [panStart, setPanStart] = useState<{ x: number; y: number; scrollX: number; scrollY: number } | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Tamanho fixo do grid (como estava antes)
-  const GRID_TILE_SIZE = 32;
+  // Tamanho base do grid
+  const BASE_TILE_SIZE = 32;
+  const GRID_TILE_SIZE = BASE_TILE_SIZE * zoomLevel;
 
   useEffect(() => {
     const updateViewport = () => {
@@ -37,12 +47,27 @@ export default function CanvasEditor() {
       }
     };
 
+    const centerViewport = () => {
+      if (containerRef.current && !isInitialized) {
+        // Centralizar o viewport no meio do grid infinito
+        const centerX = (1000000 - viewport.width) / 2;
+        const centerY = (1000000 - viewport.height) / 2;
+        
+        containerRef.current.scrollLeft = centerX;
+        containerRef.current.scrollTop = centerY;
+        
+        setIsInitialized(true);
+      }
+    };
+
     updateViewport();
     window.addEventListener('resize', updateViewport);
     
     const container = containerRef.current;
     if (container) {
       container.addEventListener('scroll', handleScroll);
+      // Centralizar após um pequeno delay para garantir que o viewport foi calculado
+      setTimeout(centerViewport, 100);
     }
 
     return () => {
@@ -51,13 +76,118 @@ export default function CanvasEditor() {
         container.removeEventListener('scroll', handleScroll);
       }
     };
-  }, []);
+  }, [viewport.width, viewport.height, isInitialized]);
 
-  const handleCellClick = (x: number, y: number) => {
-    if (activeTile) {
+  const handleCellClick = (x: number, y: number, isRightClick: boolean = false) => {
+    if (isRightClick) {
+      removeTile(x, y);
+      setLastErasedCell({ x, y });
+    } else if (activeTile) {
       placeTile(x, y, activeTile);
+      setLastDrawnCell({ x, y });
     }
   };
+
+  const handleMouseDown = (x: number, y: number, isRightClick: boolean = false, isMiddleClick: boolean = false, mouseEvent?: React.MouseEvent) => {
+    if (isMiddleClick && mouseEvent) {
+      setIsPanning(true);
+      setPanStart({ 
+        x: mouseEvent.clientX, 
+        y: mouseEvent.clientY,
+        scrollX: scrollPosition.x,
+        scrollY: scrollPosition.y
+      });
+    } else if (isRightClick) {
+      setIsErasing(true);
+      removeTile(x, y);
+      setLastErasedCell({ x, y });
+    } else if (activeTile) {
+      setIsDragging(true);
+      placeTile(x, y, activeTile);
+      setLastDrawnCell({ x, y });
+    }
+  };
+
+  const handleMouseEnter = (x: number, y: number, isRightClick: boolean = false) => {
+    if (isRightClick && isErasing && lastErasedCell && (lastErasedCell.x !== x || lastErasedCell.y !== y)) {
+      removeTile(x, y);
+      setLastErasedCell({ x, y });
+    } else if (isDragging && activeTile && lastDrawnCell && (lastDrawnCell.x !== x || lastDrawnCell.y !== y)) {
+      placeTile(x, y, activeTile);
+      setLastDrawnCell({ x, y });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    setIsErasing(false);
+    setIsPanning(false);
+    setLastDrawnCell(null);
+    setLastErasedCell(null);
+    setPanStart(null);
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    
+    const zoomSpeed = 0.1;
+    const delta = e.deltaY > 0 ? -zoomSpeed : zoomSpeed;
+    const newZoom = Math.max(0.1, Math.min(5, zoomLevel + delta));
+    
+    if (newZoom !== zoomLevel) {
+      // Calcular o ponto de zoom (onde o mouse está)
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      // Salvar posição relativa do mouse
+      const relativeX = mouseX / e.currentTarget.scrollWidth;
+      const relativeY = mouseY / e.currentTarget.scrollHeight;
+      
+      setZoomLevel(newZoom);
+      
+      // Ajustar scroll para manter o ponto de zoom no mesmo lugar
+      setTimeout(() => {
+        if (containerRef.current) {
+          const newScrollX = (relativeX * containerRef.current.scrollWidth) - mouseX;
+          const newScrollY = (relativeY * containerRef.current.scrollHeight) - mouseY;
+          
+          containerRef.current.scrollLeft = newScrollX;
+          containerRef.current.scrollTop = newScrollY;
+        }
+      }, 0);
+    }
+  };
+
+  // Adicionar event listeners para mouse up global e mouse move para panning
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      setIsDragging(false);
+      setIsErasing(false);
+      setIsPanning(false);
+      setLastDrawnCell(null);
+      setLastErasedCell(null);
+      setPanStart(null);
+    };
+
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (isPanning && panStart && containerRef.current) {
+        const deltaX = panStart.x - e.clientX;
+        const deltaY = panStart.y - e.clientY;
+        
+        containerRef.current.scrollLeft = panStart.scrollX + deltaX;
+        containerRef.current.scrollTop = panStart.scrollY + deltaY;
+      }
+    };
+
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    document.addEventListener('mousemove', handleGlobalMouseMove);
+    
+    return () => {
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+      document.removeEventListener('mousemove', handleGlobalMouseMove);
+    };
+  }, [isPanning, panStart]);
 
   // Calcular células visíveis baseadas no viewport e scroll
   const visibleCells = useMemo(() => {
@@ -102,16 +232,39 @@ export default function CanvasEditor() {
 
   return (
     <main className="flex-1 bg-custom-pure-black overflow-hidden relative">
+      {/* Indicador de zoom */}
+      <div className="absolute top-4 right-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded text-sm z-50">
+        {Math.round(zoomLevel * 100)}%
+      </div>
       {/* Container para tiles com scroll */}
       <div 
         ref={containerRef}
         className="absolute inset-0 overflow-auto"
+        onMouseDown={(e) => {
+          if (e.button === 1) {
+            e.preventDefault();
+            setIsPanning(true);
+            setPanStart({ 
+              x: e.clientX, 
+              y: e.clientY,
+              scrollX: scrollPosition.x,
+              scrollY: scrollPosition.y
+            });
+          }
+        }}
+        onMouseUp={(e) => {
+          if (e.button === 1) {
+            setIsPanning(false);
+            setPanStart(null);
+          }
+        }}
+        onWheel={handleWheel}
       >
         <div 
           style={{ 
             position: 'relative',
-            width: '100000px', // Grid realmente infinito
-            height: '100000px',
+            width: '1000000px', // Grid realmente infinito
+            height: '1000000px',
             padding: '50px'
           }}
         >
@@ -177,22 +330,36 @@ export default function CanvasEditor() {
             {visibleCells.map(({ x, y }) => (
               <div
                 key={`grid-${x}-${y}`}
-                style={{
-                  position: 'absolute',
-                  left: x * GRID_TILE_SIZE,
-                  top: y * GRID_TILE_SIZE,
-                  width: GRID_TILE_SIZE,
-                  height: GRID_TILE_SIZE,
-                  border: 'none',
-                  cursor: 'pointer',
-                  backgroundColor: 'transparent',
-                }}
-                onClick={() => handleCellClick(x, y)}
+                                  style={{
+                    position: 'absolute',
+                    left: x * GRID_TILE_SIZE,
+                    top: y * GRID_TILE_SIZE,
+                    width: GRID_TILE_SIZE,
+                    height: GRID_TILE_SIZE,
+                    border: 'none',
+                    cursor: isPanning ? 'grabbing' : 'grab',
+                    backgroundColor: 'transparent',
+                  }}
+                onClick={(e) => handleCellClick(x, y, e.button === 2)}
+                onMouseDown={(e) => handleMouseDown(x, y, e.button === 2, e.button === 1, e)}
+                onContextMenu={(e) => e.preventDefault()}
                 onMouseEnter={(e) => {
-                  if (activeTile) {
+                  handleMouseEnter(x, y, e.buttons === 2);
+                  if (isPanning) {
+                    e.currentTarget.style.cursor = 'grabbing';
+                  } else if (e.buttons === 1) {
+                    e.currentTarget.style.cursor = 'grabbing';
+                  } else if (activeTile && e.buttons !== 2) {
                     e.currentTarget.style.backgroundColor = 'rgba(0,255,0,0.2)';
+                    e.currentTarget.style.cursor = 'pointer';
+                  } else if (e.buttons === 2) {
+                    e.currentTarget.style.backgroundColor = 'rgba(255,0,0,0.2)';
+                    e.currentTarget.style.cursor = 'pointer';
+                  } else {
+                    e.currentTarget.style.cursor = 'grab';
                   }
                 }}
+                onMouseUp={handleMouseUp}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
                 }}

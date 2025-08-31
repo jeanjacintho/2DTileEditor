@@ -1,19 +1,148 @@
 import { Upload } from '@nsmr/pixelart-react';
+import { useState, useEffect, useRef } from 'react';
 import { useTilesetStore } from '../../hooks/useTileset';
 
-const TILE_DISPLAY_SIZE = 32; // Tamanho menor para mostrar mais tiles
+const BASE_TILE_DISPLAY_SIZE = 32; // Tamanho base para mostrar tiles
 
 export default function TilesetGrid() {
   const tileset = useTilesetStore(s => s.tileset);
   const tileSize = useTilesetStore(s => s.tileSize);
   const activeTile = useTilesetStore(s => s.activeTile);
   const selectTileFromGrid = useTilesetStore(s => s.selectTileFromGrid);
+  
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [isPanning, setIsPanning] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [panStart, setPanStart] = useState<{ x: number; y: number; scrollX: number; scrollY: number } | null>(null);
+  const [lastSelectedTile, setLastSelectedTile] = useState<{ x: number; y: number } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const TILE_DISPLAY_SIZE = BASE_TILE_DISPLAY_SIZE * zoomLevel;
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    
+    const zoomSpeed = 0.1;
+    const delta = e.deltaY > 0 ? -zoomSpeed : zoomSpeed;
+    const newZoom = Math.max(0.1, Math.min(3, zoomLevel + delta));
+    
+    if (newZoom !== zoomLevel) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      const relativeX = mouseX / e.currentTarget.scrollWidth;
+      const relativeY = mouseY / e.currentTarget.scrollHeight;
+      
+      setZoomLevel(newZoom);
+      
+      setTimeout(() => {
+        if (containerRef.current) {
+          const newScrollX = (relativeX * containerRef.current.scrollWidth) - mouseX;
+          const newScrollY = (relativeY * containerRef.current.scrollHeight) - mouseY;
+          
+          containerRef.current.scrollLeft = newScrollX;
+          containerRef.current.scrollTop = newScrollY;
+        }
+      }, 0);
+    }
+  };
+
+  const handleMouseDown = (x: number, y: number, isRightClick: boolean = false, isMiddleClick: boolean = false, mouseEvent?: React.MouseEvent) => {
+    if (isMiddleClick && mouseEvent) {
+      setIsPanning(true);
+      setPanStart({ 
+        x: mouseEvent.clientX, 
+        y: mouseEvent.clientY,
+        scrollX: containerRef.current?.scrollLeft || 0,
+        scrollY: containerRef.current?.scrollTop || 0
+      });
+    } else if (isRightClick) {
+      // Botão direito pode ser usado para desmarcar seleção
+      selectTileFromGrid(x, y);
+      setLastSelectedTile({ x, y });
+    } else {
+      setIsDragging(true);
+      selectTileFromGrid(x, y);
+      setLastSelectedTile({ x, y });
+    }
+  };
+
+  const handleMouseEnter = (x: number, y: number, isRightClick: boolean = false) => {
+    if (isDragging && lastSelectedTile && (lastSelectedTile.x !== x || lastSelectedTile.y !== y)) {
+      selectTileFromGrid(x, y);
+      setLastSelectedTile({ x, y });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    setIsPanning(false);
+    setLastSelectedTile(null);
+    setPanStart(null);
+  };
+
+  // Event listeners globais
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      setIsDragging(false);
+      setIsPanning(false);
+      setLastSelectedTile(null);
+      setPanStart(null);
+    };
+
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (isPanning && panStart && containerRef.current) {
+        const deltaX = panStart.x - e.clientX;
+        const deltaY = panStart.y - e.clientY;
+        
+        containerRef.current.scrollLeft = panStart.scrollX + deltaX;
+        containerRef.current.scrollTop = panStart.scrollY + deltaY;
+      }
+    };
+
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    document.addEventListener('mousemove', handleGlobalMouseMove);
+    
+    return () => {
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+      document.removeEventListener('mousemove', handleGlobalMouseMove);
+    };
+  }, [isPanning, panStart]);
 
   return (
     <div className="w-full">
-      <div className="text-sm font-medium mb-2 text-custom-white">Tileset Grid</div>
+      <div className="text-sm font-medium mb-2 text-custom-white flex justify-between items-center">
+        <span>Tileset Grid</span>
+        <span className="text-xs bg-black bg-opacity-50 text-white px-2 py-1 rounded">
+          {Math.round(zoomLevel * 100)}%
+        </span>
+      </div>
       {tileset ? (
-        <div className="border border-custom-light-gray bg-custom-pure-black overflow-auto" style={{ maxHeight: '300px' }}>
+        <div 
+          ref={containerRef}
+          className="border border-custom-light-gray bg-custom-pure-black overflow-auto" 
+          style={{ maxHeight: '300px' }}
+          onMouseDown={(e) => {
+            if (e.button === 1) {
+              e.preventDefault();
+              setIsPanning(true);
+              setPanStart({ 
+                x: e.clientX, 
+                y: e.clientY,
+                scrollX: containerRef.current?.scrollLeft || 0,
+                scrollY: containerRef.current?.scrollTop || 0
+              });
+            }
+          }}
+          onMouseUp={(e) => {
+            if (e.button === 1) {
+              setIsPanning(false);
+              setPanStart(null);
+            }
+          }}
+          onWheel={handleWheel}
+        >
           <div 
             className="relative"
             style={{
@@ -56,8 +185,27 @@ export default function TilesetGrid() {
                       style={{
                         width: TILE_DISPLAY_SIZE,
                         height: TILE_DISPLAY_SIZE,
+                        cursor: isPanning ? 'grabbing' : 'grab',
                       }}
-                      onClick={() => selectTileFromGrid(x, y)}
+                      onClick={(e) => selectTileFromGrid(x, y)}
+                      onMouseDown={(e) => handleMouseDown(x, y, e.button === 2, e.button === 1, e)}
+                      onContextMenu={(e) => e.preventDefault()}
+                      onMouseEnter={(e) => {
+                        handleMouseEnter(x, y, e.buttons === 2);
+                        if (isPanning) {
+                          e.currentTarget.style.cursor = 'grabbing';
+                        } else if (e.buttons === 1) {
+                          e.currentTarget.style.cursor = 'grabbing';
+                        } else if (e.buttons === 2) {
+                          e.currentTarget.style.cursor = 'pointer';
+                        } else {
+                          e.currentTarget.style.cursor = 'grab';
+                        }
+                      }}
+                      onMouseUp={handleMouseUp}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.cursor = 'grab';
+                      }}
                       title={`Tile ${x},${y}`}
                     >
                       {isActive && (

@@ -19,6 +19,7 @@ interface TileMapState {
   future: TileMap[];
   activeLayerId: string | null;
   placeTile: (x: number, y: number, tileId: string) => void;
+  removeTile: (x: number, y: number) => void;
   undo: () => void;
   redo: () => void;
   // Layer management
@@ -56,6 +57,21 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
             activeLayer.data[y].push(null);
           }
           activeLayer.data[y][x] = tileId;
+        }
+      });
+      return {
+        tileMap: next,
+        history: [...state.history, state.tileMap],
+        future: [],
+      };
+    });
+  },
+  removeTile: (x, y) => {
+    set(state => {
+      const next = produce(state.tileMap, draft => {
+        const activeLayer = draft.layers.find(layer => layer.id === state.activeLayerId);
+        if (activeLayer && activeLayer.visible && activeLayer.data[y] && activeLayer.data[y][x] !== null) {
+          activeLayer.data[y][x] = null;
         }
       });
       return {
