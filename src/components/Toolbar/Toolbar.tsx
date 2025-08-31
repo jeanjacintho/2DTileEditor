@@ -5,92 +5,66 @@ import { Download } from 'lucide-react';
 
 export default function Toolbar() {
   const tileMap = useTileMapStore(s => s.tileMap);
-  const setMapSize = useTileMapStore(s => s.setMapSize);
   const undo = useTileMapStore(s => s.undo);
   const redo = useTileMapStore(s => s.redo);
   const exportMap = useTileMapStore(s => s.exportMap);
+  const getMapBounds = useTileMapStore(s => s.getMapBounds);
   const activeLayerId = useTileMapStore(s => s.activeLayerId);
   const tileSize = useTilesetStore(s => s.tileSize);
   const setTileSize = useTilesetStore(s => s.setTileSize);
-  const [width, setWidth] = useState(tileMap.width);
-  const [height, setHeight] = useState(tileMap.height);
   const [tileSizeValue, setTileSizeValue] = useState(tileSize.width);
 
-  function handleApplySize() {
-    setMapSize(width, height);
-  }
+  const handleTileSizeChange = (newSize: number) => {
+    setTileSizeValue(newSize);
+    setTileSize({ width: newSize, height: newSize });
+  };
 
-  function handleTileSizeChange(value: number) {
-    setTileSizeValue(value);
-    setTileSize({ width: value, height: value });
-  }
-
+  const bounds = getMapBounds();
   const activeLayer = tileMap.layers.find(layer => layer.id === activeLayerId);
 
   return (
-    <header className="w-full h-12 bg-gray-100 border-b flex items-center px-4 gap-4">
-      <span className="font-bold">Toolbar</span>
-      <button className="px-2 py-1 bg-gray-200 rounded" onClick={undo} title="Desfazer (Ctrl+Z)">
-        ⎌ Undo
-      </button>
-      <button className="px-2 py-1 bg-gray-200 rounded" onClick={redo} title="Refazer (Ctrl+Y)">
-        ↻ Redo
-      </button>
-      
+    <header className="bg-white border-b px-4 py-2 flex items-center justify-between gap-4">
       <div className="flex items-center gap-2">
-        <label className="flex items-center gap-1 text-sm">
-          <span className="text-gray-600">Tamanho dos Tiles:</span>
-          <input
-            type="number"
-            min={1}
-            value={tileSizeValue}
-            onChange={e => handleTileSizeChange(Math.max(1, Number(e.target.value)))}
-            className="w-16 border rounded px-2 py-1 bg-white text-sm"
-          />
-        </label>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <label className="flex items-center gap-1 text-sm">
-          <span className="text-gray-600">Largura do Mapa:</span>
-          <input
-            type="number"
-            min={1}
-            value={width}
-            onChange={e => setWidth(Math.max(1, Number(e.target.value)))}
-            className="w-16 border rounded px-2 py-1 bg-white text-sm"
-          />
-        </label>
-        <label className="flex items-center gap-1 text-sm">
-          <span className="text-gray-600">Altura do Mapa:</span>
-          <input
-            type="number"
-            min={1}
-            value={height}
-            onChange={e => setHeight(Math.max(1, Number(e.target.value)))}
-            className="w-16 border rounded px-2 py-1 bg-white text-sm"
-          />
-        </label>
         <button
-          className="px-3 py-1 bg-blue-500 text-white rounded text-sm"
-          onClick={handleApplySize}
+          onClick={undo}
+          className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
         >
-          Aplicar
+          Undo
+        </button>
+        <button
+          onClick={redo}
+          className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+        >
+          Redo
         </button>
       </div>
 
+      <div className="flex items-center gap-2">
+        <label className="flex items-center gap-1 text-sm">
+          <span>Tamanho dos Tiles:</span>
+          <input
+            type="number"
+            value={tileSizeValue}
+            onChange={(e) => handleTileSizeChange(Math.max(1, Number(e.target.value)))}
+            className="w-16 px-2 py-1 border rounded text-sm"
+            min="1"
+          />
+        </label>
+      </div>
+
       <div className="flex items-center gap-2 ml-auto">
-        <span className="text-sm text-gray-600">Layer Ativa:</span>
-        <span className="text-sm font-medium bg-blue-100 px-2 py-1 rounded">
-          {activeLayer?.name || 'Nenhuma'}
+        <span className="text-sm text-gray-600">
+          Mapa: {bounds.width}×{bounds.height}
         </span>
-        <span className="text-sm text-gray-500">
+        <span className="text-sm text-gray-600">
+          Layer Ativa: {activeLayer?.name || 'Nenhuma'}
+        </span>
+        <span className="text-sm text-gray-600">
           ({tileMap.layers.length} layers)
         </span>
-        
         <button
-          className="px-3 py-1 bg-green-500 text-white rounded text-sm flex items-center gap-1 hover:bg-green-600"
           onClick={() => exportMap(tileSize.width)}
+          className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm flex items-center gap-1"
           title="Exportar Mapa (JSON)"
         >
           <Download size={14} />

@@ -2,27 +2,15 @@ import { create } from 'zustand';
 import { produce } from 'immer';
 import type { TileMap, Layer } from '../types/index';
 
-function createDefaultLayer(width: number, height: number): Layer {
+function createDefaultLayer(): Layer {
   return {
     id: Date.now().toString(),
     name: "Layer_0",
     visible: true,
     opacity: 1,
     isCollision: false,
-    data: Array.from({ length: height }, () => Array(width).fill(null)),
+    data: [], // Inicialmente vazio, será expandido dinamicamente
   };
-}
-
-function resizeLayerData(data: any[][], newWidth: number, newHeight: number) {
-  const resized = [];
-  for (let y = 0; y < newHeight; y++) {
-    const row = [];
-    for (let x = 0; x < newWidth; x++) {
-      row.push(y < data.length && x < data[y].length ? data[y][x] : null);
-    }
-    resized.push(row);
-  }
-  return resized;
 }
 
 interface TileMapState {
@@ -30,7 +18,6 @@ interface TileMapState {
   history: TileMap[];
   future: TileMap[];
   activeLayerId: string | null;
-  setMapSize: (width: number, height: number) => void;
   placeTile: (x: number, y: number, tileId: string) => void;
   undo: () => void;
   redo: () => void;
@@ -43,39 +30,31 @@ interface TileMapState {
   setActiveLayer: (layerId: string) => void;
   setLayerCollision: (layerId: string, isCollision: boolean) => void;
   exportMap: (tileSize: number) => void;
+  getMapBounds: () => { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number };
 }
 
-export const useTileMapStore = create<TileMapState>((set) => ({
+export const useTileMapStore = create<TileMapState>((set, get) => ({
   tileMap: {
-    width: 20,
-    height: 15,
+    width: 0, // Será calculado dinamicamente
+    height: 0, // Será calculado dinamicamente
     tileSize: 32,
-    layers: [createDefaultLayer(20, 15)],
+    layers: [createDefaultLayer()],
   },
   history: [],
   future: [],
   activeLayerId: null,
-  setMapSize: (width, height) => {
-    set(state => {
-      const next = produce(state.tileMap, draft => {
-        draft.width = width;
-        draft.height = height;
-        draft.layers.forEach(layer => {
-          layer.data = resizeLayerData(layer.data, width, height);
-        });
-      });
-      return {
-        tileMap: next,
-        history: [...state.history, state.tileMap],
-        future: [],
-      };
-    });
-  },
   placeTile: (x, y, tileId) => {
     set(state => {
       const next = produce(state.tileMap, draft => {
         const activeLayer = draft.layers.find(layer => layer.id === state.activeLayerId);
         if (activeLayer && activeLayer.visible) {
+          // Garantir que a matriz tenha espaço suficiente
+          while (activeLayer.data.length <= y) {
+            activeLayer.data.push([]);
+          }
+          while (activeLayer.data[y].length <= x) {
+            activeLayer.data[y].push(null);
+          }
           activeLayer.data[y][x] = tileId;
         }
       });
@@ -119,7 +98,7 @@ export const useTileMapStore = create<TileMapState>((set) => ({
         visible: true,
         opacity: 1,
         isCollision: false,
-        data: Array.from({ length: state.tileMap.height }, () => Array(state.tileMap.width).fill(null)),
+        data: [], // Inicialmente vazio
       };
       
       const next = produce(state.tileMap, draft => {
@@ -230,27 +209,59 @@ export const useTileMapStore = create<TileMapState>((set) => ({
       };
     });
   },
+  getMapBounds: () => {
+    const state = get();
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    
+    state.tileMap.layers.forEach(layer => {
+      layer.data.forEach((row, y) => {
+        row.forEach((tileId, x) => {
+          if (tileId !== null) {
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+          }
+        });
+      });
+    });
+    
+    // Se não há tiles, retornar valores padrão
+    if (minX === Infinity) {
+      return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 1, height: 1 };
+    }
+    
+    return {
+      minX,
+      minY,
+      maxX,
+      maxY,
+      width: maxX - minX + 1,
+      height: maxY - minY + 1
+    };
+  },
   exportMap: (tileSize) => {
     set(state => {
+      const bounds = get().getMapBounds();
+      
       // Converter o formato de dados para o formato especificado
       // Ordem: primeiro layer primeiro (Layer_0, Layer_1, Layer_2, etc.)
       // Como as layers estão em ordem reversa no array (mais nova primeiro), precisamos reverter para exportar na ordem cronológica
       const layers = [...state.tileMap.layers].reverse().map(layer => {
         const tiles: Array<{id: string, x: number, y: number}> = [];
         
-        // Converter a matriz de dados para lista de tiles
-        for (let y = 0; y < layer.data.length; y++) {
-          for (let x = 0; x < layer.data[y].length; x++) {
-            const tileId = layer.data[y][x];
+        // Converter a matriz de dados para lista de tiles, ajustando para coordenadas relativas
+        layer.data.forEach((row, y) => {
+          row.forEach((tileId, x) => {
             if (tileId !== null) {
               tiles.push({
                 id: tileId,
-                x: x,
-                y: y
+                x: x - bounds.minX, // Coordenada relativa ao bounds
+                y: y - bounds.minY   // Coordenada relativa ao bounds
               });
             }
-          }
-        }
+          });
+        });
         
         return {
           name: layer.name,
@@ -261,8 +272,8 @@ export const useTileMapStore = create<TileMapState>((set) => ({
       
       const mapData = {
         tileSize: tileSize,
-        mapWidth: state.tileMap.width,
-        mapHeight: state.tileMap.height,
+        mapWidth: bounds.width,
+        mapHeight: bounds.height,
         layers: layers
       };
       

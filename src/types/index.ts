@@ -12,12 +12,12 @@ export interface Layer {
   visible: boolean;
   opacity: number;
   isCollision: boolean;
-  data: (string | null)[][];
+  data: (string | null)[][]; // Matriz dinâmica que cresce conforme necessário
 }
 
 export interface TileMap {
-  width: number;
-  height: number;
+  width: number; // Será calculado dinamicamente
+  height: number; // Será calculado dinamicamente
   tileSize: number;
   layers: Layer[];
 }
