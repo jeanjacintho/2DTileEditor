@@ -90,6 +90,8 @@ export default function CanvasEditor() {
 
   const handleMouseDown = (x: number, y: number, isRightClick: boolean = false, isMiddleClick: boolean = false, mouseEvent?: React.MouseEvent) => {
     if (isMiddleClick && mouseEvent) {
+      mouseEvent.preventDefault();
+      mouseEvent.stopPropagation();
       setIsPanning(true);
       setPanStart({ 
         x: mouseEvent.clientX, 
@@ -159,6 +161,43 @@ export default function CanvasEditor() {
     }
   };
 
+  const centerOnContent = () => {
+    if (containerRef.current) {
+      const bounds = getMapBounds();
+      
+      // Se não há tiles, centralizar no meio do grid
+      if (bounds.width === 1 && bounds.height === 1) {
+        const centerX = (1000000 - viewport.width) / 2;
+        const centerY = (1000000 - viewport.height) / 2;
+        
+        containerRef.current.scrollLeft = Math.max(0, centerX);
+        containerRef.current.scrollTop = Math.max(0, centerY);
+        return;
+      }
+      
+      // Calcular o centro do conteúdo
+      const contentCenterX = (bounds.minX + bounds.maxX) / 2;
+      const contentCenterY = (bounds.minY + bounds.maxY) / 2;
+      
+      // Converter para coordenadas de scroll
+      const scrollX = (contentCenterX * GRID_TILE_SIZE) - (viewport.width / 2);
+      const scrollY = (contentCenterY * GRID_TILE_SIZE) - (viewport.height / 2);
+      
+      // Limitar aos limites do grid
+      const maxScrollX = 1000000 - viewport.width;
+      const maxScrollY = 1000000 - viewport.height;
+      const limitedScrollX = Math.max(0, Math.min(maxScrollX, scrollX));
+      const limitedScrollY = Math.max(0, Math.min(maxScrollY, scrollY));
+      
+      // Aplicar scroll com animação suave
+      containerRef.current.scrollTo({
+        left: limitedScrollX,
+        top: limitedScrollY,
+        behavior: 'smooth'
+      });
+    }
+  };
+
   // Adicionar event listeners para mouse up global e mouse move para panning
   useEffect(() => {
     const handleGlobalMouseUp = () => {
@@ -171,21 +210,39 @@ export default function CanvasEditor() {
     };
 
     const handleGlobalMouseMove = (e: MouseEvent) => {
-      if (isPanning && panStart && containerRef.current) {
+      // Só aplicar panning se estiver realmente fazendo panning e não desenhando
+      if (isPanning && panStart && containerRef.current && !isDragging && !isErasing) {
         const deltaX = panStart.x - e.clientX;
         const deltaY = panStart.y - e.clientY;
         
-        containerRef.current.scrollLeft = panStart.scrollX + deltaX;
-        containerRef.current.scrollTop = panStart.scrollY + deltaY;
+        const newScrollX = panStart.scrollX + deltaX;
+        const newScrollY = panStart.scrollY + deltaY;
+        
+        // Limitar o scroll aos limites do grid
+        const maxScrollX = 1000000 - viewport.width;
+        const maxScrollY = 1000000 - viewport.height;
+        
+        containerRef.current.scrollLeft = Math.max(0, Math.min(maxScrollX, newScrollX));
+        containerRef.current.scrollTop = Math.max(0, Math.min(maxScrollY, newScrollY));
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+G (macOS) / Ctrl+G (Windows/Linux) para centralizar
+      if ((e.metaKey || e.ctrlKey) && e.key === 'g') {
+        e.preventDefault();
+        centerOnContent();
       }
     };
 
     document.addEventListener('mouseup', handleGlobalMouseUp);
     document.addEventListener('mousemove', handleGlobalMouseMove);
+    document.addEventListener('keydown', handleKeyDown);
     
     return () => {
       document.removeEventListener('mouseup', handleGlobalMouseUp);
       document.removeEventListener('mousemove', handleGlobalMouseMove);
+      document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isPanning, panStart]);
 
@@ -236,6 +293,20 @@ export default function CanvasEditor() {
       <div className="absolute top-4 right-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded text-sm z-50">
         {Math.round(zoomLevel * 100)}%
       </div>
+      
+      {/* Botão de centralizar */}
+      <button
+        onClick={centerOnContent}
+        className="absolute top-4 left-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded text-sm z-50 hover:bg-opacity-70 transition-all duration-200 flex items-center gap-2"
+        title="Centralizar no conteúdo"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1v6m0 6v6"/>
+          <path d="M1 12h6m6 0h6"/>
+        </svg>
+        Centralizar
+      </button>
       {/* Container para tiles com scroll */}
       <div 
         ref={containerRef}
@@ -243,6 +314,7 @@ export default function CanvasEditor() {
         onMouseDown={(e) => {
           if (e.button === 1) {
             e.preventDefault();
+            e.stopPropagation();
             setIsPanning(true);
             setPanStart({ 
               x: e.clientX, 
