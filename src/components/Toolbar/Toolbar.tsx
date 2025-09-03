@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTileMapStore } from '../../hooks/useTileMap';
 import { useTilesetStore } from '../../hooks/useTileset';
+import { useDrawModeStore } from '../../hooks/useDrawMode';
 import { Download, Redo, Undo } from '@nsmr/pixelart-react';
 import Input from '../UI/Input';
 import Button from '../UI/Button';
@@ -14,6 +15,8 @@ export default function Toolbar() {
   const activeLayerId = useTileMapStore(s => s.activeLayerId);
   const tileSize = useTilesetStore(s => s.tileSize);
   const setTileSize = useTilesetStore(s => s.setTileSize);
+  const drawMode = useDrawModeStore(s => s.drawMode);
+  const toggleDrawMode = useDrawModeStore(s => s.toggleDrawMode);
   const [tileSizeValue, setTileSizeValue] = useState(tileSize.width);
 
   const handleTileSizeChange = (newSize: number) => {
@@ -54,6 +57,22 @@ export default function Toolbar() {
           className='w-14'
           placeholder="32"
         />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Button 
+          variant={drawMode === 'rectangular' ? 'primary' : 'secondary'}
+          onClick={toggleDrawMode}
+          className="flex items-center gap-2"
+          title={`Modo de desenho: ${drawMode === 'normal' ? 'Normal' : 'Retangular'}`}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="9" cy="9" r="2"/>
+            <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+          </svg>
+          {drawMode === 'normal' ? 'Normal' : 'Retangular'}
+        </Button>
       </div>
 
       <div className="flex items-center gap-2 ml-auto">

@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTileMapStore } from '../../hooks/useTileMap';
 import { useTilesetStore } from '../../hooks/useTileset';
+import { useDrawModeStore } from '../../hooks/useDrawMode';
 
 export default function CanvasEditor() {
   const tileMap = useTileMapStore(s => s.tileMap);
@@ -10,6 +11,7 @@ export default function CanvasEditor() {
   const tileset = useTilesetStore(s => s.tileset);
   const activeTile = useTilesetStore(s => s.activeTile);
   const tileSize = useTilesetStore(s => s.tileSize);
+  const drawMode = useDrawModeStore(s => s.drawMode);
   
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [scrollPosition, setScrollPosition] = useState({ x: 0, y: 0 });
@@ -20,6 +22,7 @@ export default function CanvasEditor() {
   const [lastDrawnCell, setLastDrawnCell] = useState<{ x: number; y: number } | null>(null);
   const [lastErasedCell, setLastErasedCell] = useState<{ x: number; y: number } | null>(null);
   const [panStart, setPanStart] = useState<{ x: number; y: number; scrollX: number; scrollY: number } | null>(null);
+  const [rectSelection, setRectSelection] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -27,6 +30,82 @@ export default function CanvasEditor() {
   const BASE_TILE_SIZE = 32;
   const GRID_TILE_SIZE = BASE_TILE_SIZE * zoomLevel;
 
+  // Função para limitar scroll aos limites do grid
+  const clampScroll = useCallback((x: number, y: number) => {
+    const maxScrollX = Math.max(0, 1000000 - viewport.width);
+    const maxScrollY = Math.max(0, 1000000 - viewport.height);
+    return {
+      x: Math.max(0, Math.min(maxScrollX, x)),
+      y: Math.max(0, Math.min(maxScrollY, y))
+    };
+  }, [viewport.width, viewport.height]);
+
+  // Função para centralizar o viewport
+  const centerOnContent = useCallback(() => {
+    if (!containerRef.current) return;
+    
+    const bounds = getMapBounds();
+    
+    // Se não há tiles ou bounds inválidos, centralizar no meio do grid
+    if (bounds.width <= 1 && bounds.height <= 1) {
+      const centerX = (1000000 - viewport.width) / 2;
+      const centerY = (1000000 - viewport.height) / 2;
+      
+      const clamped = clampScroll(centerX, centerY);
+      containerRef.current.scrollTo({
+        left: clamped.x,
+        top: clamped.y,
+        behavior: 'smooth'
+      });
+      return;
+    }
+    
+    // Calcular o centro do conteúdo
+    const contentCenterX = (bounds.minX + bounds.maxX) / 2;
+    const contentCenterY = (bounds.minY + bounds.maxY) / 2;
+    
+    // Converter para coordenadas de scroll
+    const scrollX = (contentCenterX * GRID_TILE_SIZE) - (viewport.width / 2);
+    const scrollY = (contentCenterY * GRID_TILE_SIZE) - (viewport.height / 2);
+    
+    // Aplicar limites e scroll
+    const clamped = clampScroll(scrollX, scrollY);
+    containerRef.current.scrollTo({
+      left: clamped.x,
+      top: clamped.y,
+      behavior: 'smooth'
+    });
+  }, [getMapBounds, viewport.width, viewport.height, GRID_TILE_SIZE, clampScroll]);
+
+  // Função para desenhar tiles em uma área retangular
+  const drawRectangularArea = useCallback((startX: number, startY: number, endX: number, endY: number, tileId: string) => {
+    const minX = Math.min(startX, endX);
+    const maxX = Math.max(startX, endX);
+    const minY = Math.min(startY, endY);
+    const maxY = Math.max(startY, endY);
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        placeTile(x, y, tileId);
+      }
+    }
+  }, [placeTile, drawMode]);
+
+  // Função para remover tiles em uma área retangular
+  const removeRectangularArea = useCallback((startX: number, startY: number, endX: number, endY: number) => {
+    const minX = Math.min(startX, endX);
+    const maxX = Math.max(startX, endX);
+    const minY = Math.min(startY, endY);
+    const maxY = Math.max(startY, endY);
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        removeTile(x, y);
+      }
+    }
+  }, [removeTile, drawMode]);
+
+  // Inicialização do viewport
   useEffect(() => {
     const updateViewport = () => {
       if (containerRef.current) {
@@ -47,14 +126,15 @@ export default function CanvasEditor() {
       }
     };
 
-    const centerViewport = () => {
-      if (containerRef.current && !isInitialized) {
+    const initializeViewport = () => {
+      if (containerRef.current && !isInitialized && viewport.width > 0 && viewport.height > 0) {
         // Centralizar o viewport no meio do grid infinito
         const centerX = (1000000 - viewport.width) / 2;
         const centerY = (1000000 - viewport.height) / 2;
         
-        containerRef.current.scrollLeft = centerX;
-        containerRef.current.scrollTop = centerY;
+        const clamped = clampScroll(centerX, centerY);
+        containerRef.current.scrollLeft = clamped.x;
+        containerRef.current.scrollTop = clamped.y;
         
         setIsInitialized(true);
       }
@@ -66,8 +146,14 @@ export default function CanvasEditor() {
     const container = containerRef.current;
     if (container) {
       container.addEventListener('scroll', handleScroll);
-      // Centralizar após um pequeno delay para garantir que o viewport foi calculado
-      setTimeout(centerViewport, 100);
+    }
+
+    // Inicializar viewport após um pequeno delay para garantir que as dimensões foram calculadas
+    const initTimer = setTimeout(initializeViewport, 50);
+    
+    // Se o viewport já tem dimensões, inicializar imediatamente
+    if (viewport.width > 0 && viewport.height > 0) {
+      initializeViewport();
     }
 
     return () => {
@@ -75,8 +161,9 @@ export default function CanvasEditor() {
       if (container) {
         container.removeEventListener('scroll', handleScroll);
       }
+      clearTimeout(initTimer);
     };
-  }, [viewport.width, viewport.height, isInitialized]);
+  }, [isInitialized, viewport.width, viewport.height, clampScroll]);
 
   const handleCellClick = (x: number, y: number, isRightClick: boolean = false) => {
     if (isRightClick) {
@@ -101,10 +188,12 @@ export default function CanvasEditor() {
       });
     } else if (isRightClick) {
       setIsErasing(true);
+      setRectSelection({ startX: x, startY: y, endX: x, endY: y });
       removeTile(x, y);
       setLastErasedCell({ x, y });
     } else if (activeTile) {
       setIsDragging(true);
+      setRectSelection({ startX: x, startY: y, endX: x, endY: y });
       placeTile(x, y, activeTile);
       setLastDrawnCell({ x, y });
     }
@@ -112,10 +201,24 @@ export default function CanvasEditor() {
 
   const handleMouseEnter = (x: number, y: number, isRightClick: boolean = false) => {
     if (isRightClick && isErasing && lastErasedCell && (lastErasedCell.x !== x || lastErasedCell.y !== y)) {
-      removeTile(x, y);
+      if (rectSelection && drawMode === 'rectangular') {
+        // Atualizar seleção retangular
+        setRectSelection(prev => prev ? { ...prev, endX: x, endY: y } : null);
+        // Remover área retangular
+        removeRectangularArea(rectSelection.startX, rectSelection.startY, x, y);
+      } else {
+        removeTile(x, y);
+      }
       setLastErasedCell({ x, y });
     } else if (isDragging && activeTile && lastDrawnCell && (lastDrawnCell.x !== x || lastDrawnCell.y !== y)) {
-      placeTile(x, y, activeTile);
+      if (rectSelection && drawMode === 'rectangular') {
+        // Atualizar seleção retangular
+        setRectSelection(prev => prev ? { ...prev, endX: x, endY: y } : null);
+        // Desenhar área retangular
+        drawRectangularArea(rectSelection.startX, rectSelection.startY, x, y, activeTile);
+      } else {
+        placeTile(x, y, activeTile);
+      }
       setLastDrawnCell({ x, y });
     }
   };
@@ -127,74 +230,52 @@ export default function CanvasEditor() {
     setLastDrawnCell(null);
     setLastErasedCell(null);
     setPanStart(null);
+    setRectSelection(null);
   };
 
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
+    
+    // Não permitir zoom se o viewport não foi inicializado
+    if (!isInitialized || viewport.width === 0 || viewport.height === 0) return;
     
     const zoomSpeed = 0.1;
     const delta = e.deltaY > 0 ? -zoomSpeed : zoomSpeed;
     const newZoom = Math.max(0.1, Math.min(5, zoomLevel + delta));
     
     if (newZoom !== zoomLevel) {
+      if (!containerRef.current) return;
+      
       // Calcular o ponto de zoom (onde o mouse está)
       const rect = e.currentTarget.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
       
-      // Salvar posição relativa do mouse
-      const relativeX = mouseX / e.currentTarget.scrollWidth;
-      const relativeY = mouseY / e.currentTarget.scrollHeight;
+      // Calcular posição atual do scroll
+      const currentScrollX = containerRef.current.scrollLeft;
+      const currentScrollY = containerRef.current.scrollTop;
+      
+      // Calcular posição absoluta do mouse no grid
+      const absoluteMouseX = currentScrollX + mouseX;
+      const absoluteMouseY = currentScrollY + mouseY;
+      
+      // Calcular a razão de zoom
+      const zoomRatio = newZoom / zoomLevel;
+      
+      // Calcular nova posição de scroll para manter o mouse no mesmo ponto
+      const newScrollX = absoluteMouseX * zoomRatio - mouseX;
+      const newScrollY = absoluteMouseY * zoomRatio - mouseY;
       
       setZoomLevel(newZoom);
       
-      // Ajustar scroll para manter o ponto de zoom no mesmo lugar
+      // Aplicar o novo scroll com limites
       setTimeout(() => {
         if (containerRef.current) {
-          const newScrollX = (relativeX * containerRef.current.scrollWidth) - mouseX;
-          const newScrollY = (relativeY * containerRef.current.scrollHeight) - mouseY;
-          
-          containerRef.current.scrollLeft = newScrollX;
-          containerRef.current.scrollTop = newScrollY;
+          const clamped = clampScroll(newScrollX, newScrollY);
+          containerRef.current.scrollLeft = clamped.x;
+          containerRef.current.scrollTop = clamped.y;
         }
       }, 0);
-    }
-  };
-
-  const centerOnContent = () => {
-    if (containerRef.current) {
-      const bounds = getMapBounds();
-      
-      // Se não há tiles, centralizar no meio do grid
-      if (bounds.width === 1 && bounds.height === 1) {
-        const centerX = (1000000 - viewport.width) / 2;
-        const centerY = (1000000 - viewport.height) / 2;
-        
-        containerRef.current.scrollLeft = Math.max(0, centerX);
-        containerRef.current.scrollTop = Math.max(0, centerY);
-        return;
-      }
-      
-      // Calcular o centro do conteúdo
-      const contentCenterX = (bounds.minX + bounds.maxX) / 2;
-      const contentCenterY = (bounds.minY + bounds.maxY) / 2;
-      
-      // Converter para coordenadas de scroll
-      const scrollX = (contentCenterX * GRID_TILE_SIZE) - (viewport.width / 2);
-      const scrollY = (contentCenterY * GRID_TILE_SIZE) - (viewport.height / 2);
-      
-      // Limitar aos limites do grid
-      const maxScrollX = 1000000 - viewport.width;
-      const maxScrollY = 1000000 - viewport.height;
-      const limitedScrollX = Math.max(0, Math.min(maxScrollX, scrollX));
-      const limitedScrollY = Math.max(0, Math.min(maxScrollY, scrollY));
-      
-      // Aplicar scroll com animação suave
-      containerRef.current.scrollTo({
-        left: limitedScrollX,
-        top: limitedScrollY,
-        behavior: 'smooth'
-      });
     }
   };
 
@@ -207,6 +288,7 @@ export default function CanvasEditor() {
       setLastDrawnCell(null);
       setLastErasedCell(null);
       setPanStart(null);
+      setRectSelection(null);
     };
 
     const handleGlobalMouseMove = (e: MouseEvent) => {
@@ -218,12 +300,9 @@ export default function CanvasEditor() {
         const newScrollX = panStart.scrollX + deltaX;
         const newScrollY = panStart.scrollY + deltaY;
         
-        // Limitar o scroll aos limites do grid
-        const maxScrollX = 1000000 - viewport.width;
-        const maxScrollY = 1000000 - viewport.height;
-        
-        containerRef.current.scrollLeft = Math.max(0, Math.min(maxScrollX, newScrollX));
-        containerRef.current.scrollTop = Math.max(0, Math.min(maxScrollY, newScrollY));
+        const clamped = clampScroll(newScrollX, newScrollY);
+        containerRef.current.scrollLeft = clamped.x;
+        containerRef.current.scrollTop = clamped.y;
       }
     };
 
@@ -244,14 +323,15 @@ export default function CanvasEditor() {
       document.removeEventListener('mousemove', handleGlobalMouseMove);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isPanning, panStart]);
+  }, [isPanning, panStart, isDragging, isErasing, clampScroll, centerOnContent, drawMode]);
 
   // Calcular células visíveis baseadas no viewport e scroll
   const visibleCells = useMemo(() => {
+    // Garantir que as células sejam alinhadas com o grid
     const startX = Math.floor(scrollPosition.x / GRID_TILE_SIZE);
     const startY = Math.floor(scrollPosition.y / GRID_TILE_SIZE);
-    const visibleCols = Math.ceil(viewport.width / GRID_TILE_SIZE) + 4; // Buffer extra
-    const visibleRows = Math.ceil(viewport.height / GRID_TILE_SIZE) + 4; // Buffer extra
+    const visibleCols = Math.ceil(viewport.width / GRID_TILE_SIZE) + 2; // Buffer reduzido
+    const visibleRows = Math.ceil(viewport.height / GRID_TILE_SIZE) + 2; // Buffer reduzido
 
     const cells = [];
     for (let y = startY; y < startY + visibleRows; y++) {
@@ -260,7 +340,7 @@ export default function CanvasEditor() {
       }
     }
     return cells;
-  }, [scrollPosition.x, scrollPosition.y, viewport.width, viewport.height]);
+  }, [scrollPosition.x, scrollPosition.y, viewport.width, viewport.height, GRID_TILE_SIZE]);
 
   function renderTile(cell: string | null) {
     if (!cell || !tileset) return null;
@@ -287,6 +367,23 @@ export default function CanvasEditor() {
     );
   }
 
+  // Calcular área de seleção retangular para renderização
+  const selectionArea = useMemo(() => {
+    if (!rectSelection) return null;
+    
+    const minX = Math.min(rectSelection.startX, rectSelection.endX);
+    const maxX = Math.max(rectSelection.startX, rectSelection.endX);
+    const minY = Math.min(rectSelection.startY, rectSelection.endY);
+    const maxY = Math.max(rectSelection.startY, rectSelection.endY);
+    
+    return {
+      left: minX * GRID_TILE_SIZE,
+      top: minY * GRID_TILE_SIZE,
+      width: (maxX - minX + 1) * GRID_TILE_SIZE,
+      height: (maxY - minY + 1) * GRID_TILE_SIZE,
+    };
+  }, [rectSelection, GRID_TILE_SIZE, drawMode]);
+
   return (
     <main className="flex-1 bg-custom-pure-black overflow-hidden relative">
       {/* Indicador de zoom */}
@@ -307,10 +404,31 @@ export default function CanvasEditor() {
         </svg>
         Centralizar
       </button>
+
+      {/* Indicador de modo de desenho */}
+      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-50 text-white px-3 py-1 rounded text-sm z-50">
+        {isDragging ? 'Desenhando' : isErasing ? 'Apagando' : isPanning ? 'Panning' : 'Pronto'}
+        {drawMode === 'rectangular' && ' (Retangular)'}
+      </div>
+
+      {/* Indicador de navegação */}
+      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-50 text-white px-3 py-1 rounded text-sm z-50">
+        <span className="text-xs">Use o botão do meio do mouse para navegar</span>
+      </div>
+
+      {/* Debug: Informações do grid */}
+      <div className="absolute bottom-4 right-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded text-sm z-50">
+        <div className="text-xs">
+          <div>Grid Size: {GRID_TILE_SIZE}px</div>
+          <div>Scroll: {Math.round(scrollPosition.x)}, {Math.round(scrollPosition.y)}</div>
+          <div>Cells: {visibleCells.length}</div>
+        </div>
+      </div>
+
       {/* Container para tiles com scroll */}
       <div 
         ref={containerRef}
-        className="absolute inset-0 overflow-auto"
+        className="absolute inset-0 overflow-hidden"
         onMouseDown={(e) => {
           if (e.button === 1) {
             e.preventDefault();
@@ -336,8 +454,7 @@ export default function CanvasEditor() {
           style={{ 
             position: 'relative',
             width: '1000000px', // Grid realmente infinito
-            height: '1000000px',
-            padding: '50px'
+            height: '1000000px'
           }}
         >
           {/* Grid infinito de fundo - move com o scroll */}
@@ -345,8 +462,8 @@ export default function CanvasEditor() {
             className="absolute inset-0 pointer-events-none"
             style={{
               backgroundImage: `
-                linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
+                linear-gradient(rgba(255,255,255,0.2) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.2) 1px, transparent 1px)
               `,
               backgroundSize: `${GRID_TILE_SIZE}px ${GRID_TILE_SIZE}px`,
               backgroundPosition: '0 0'
@@ -387,6 +504,23 @@ export default function CanvasEditor() {
             )
           ))}
 
+          {/* Área de seleção retangular */}
+          {selectionArea && drawMode === 'rectangular' && (
+            <div
+              style={{
+                position: 'absolute',
+                left: selectionArea.left,
+                top: selectionArea.top,
+                width: selectionArea.width,
+                height: selectionArea.height,
+                border: '2px dashed #00ff00',
+                backgroundColor: isErasing ? 'rgba(255,0,0,0.2)' : 'rgba(0,255,0,0.2)',
+                pointerEvents: 'none',
+                zIndex: 2000,
+              }}
+            />
+          )}
+
           {/* Grid clicável infinito - apenas células visíveis */}
           <div 
             style={{ 
@@ -402,16 +536,16 @@ export default function CanvasEditor() {
             {visibleCells.map(({ x, y }) => (
               <div
                 key={`grid-${x}-${y}`}
-                                  style={{
-                    position: 'absolute',
-                    left: x * GRID_TILE_SIZE,
-                    top: y * GRID_TILE_SIZE,
-                    width: GRID_TILE_SIZE,
-                    height: GRID_TILE_SIZE,
-                    border: 'none',
-                    cursor: isPanning ? 'grabbing' : 'grab',
-                    backgroundColor: 'transparent',
-                  }}
+                style={{
+                  position: 'absolute',
+                  left: x * GRID_TILE_SIZE,
+                  top: y * GRID_TILE_SIZE,
+                  width: GRID_TILE_SIZE,
+                  height: GRID_TILE_SIZE,
+                  border: '1px solid rgba(255,255,255,0.3)', // Debug: borda temporária
+                  cursor: isPanning ? 'grabbing' : 'grab',
+                  backgroundColor: 'transparent',
+                }}
                 onClick={(e) => handleCellClick(x, y, e.button === 2)}
                 onMouseDown={(e) => handleMouseDown(x, y, e.button === 2, e.button === 1, e)}
                 onContextMenu={(e) => e.preventDefault()}

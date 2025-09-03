@@ -228,8 +228,11 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
   getMapBounds: () => {
     const state = get();
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let hasTiles = false;
     
     state.tileMap.layers.forEach(layer => {
+      if (!layer.visible) return; // Pular layers invisíveis
+      
       layer.data.forEach((row, y) => {
         row.forEach((tileId, x) => {
           if (tileId !== null) {
@@ -237,13 +240,14 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
             minY = Math.min(minY, y);
             maxX = Math.max(maxX, x);
             maxY = Math.max(maxY, y);
+            hasTiles = true;
           }
         });
       });
     });
     
-    // Se não há tiles, retornar valores padrão
-    if (minX === Infinity) {
+    // Se não há tiles, retornar valores padrão centralizados
+    if (!hasTiles) {
       return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 1, height: 1 };
     }
     

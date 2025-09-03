@@ -15,6 +15,7 @@ export default function TilesetGrid() {
   const [isDragging, setIsDragging] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number; scrollX: number; scrollY: number } | null>(null);
   const [lastSelectedTile, setLastSelectedTile] = useState<{ x: number; y: number } | null>(null);
+  const [scrollPosition, setScrollPosition] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
   const TILE_DISPLAY_SIZE = BASE_TILE_DISPLAY_SIZE * zoomLevel;
@@ -22,27 +23,53 @@ export default function TilesetGrid() {
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     
+    // Não permitir zoom se o container não está pronto
+    if (!containerRef.current) return;
+    
     const zoomSpeed = 0.1;
     const delta = e.deltaY > 0 ? -zoomSpeed : zoomSpeed;
     const newZoom = Math.max(0.1, Math.min(3, zoomLevel + delta));
     
     if (newZoom !== zoomLevel) {
+      if (!containerRef.current) return;
+      
+      // Calcular o ponto de zoom (onde o mouse está)
       const rect = e.currentTarget.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
       
-      const relativeX = mouseX / e.currentTarget.scrollWidth;
-      const relativeY = mouseY / e.currentTarget.scrollHeight;
+      // Calcular posição atual do scroll
+      const currentScrollX = containerRef.current.scrollLeft;
+      const currentScrollY = containerRef.current.scrollTop;
+      
+      // Calcular posição absoluta do mouse no grid
+      const absoluteMouseX = currentScrollX + mouseX;
+      const absoluteMouseY = currentScrollY + mouseY;
+      
+      // Calcular a razão de zoom
+      const zoomRatio = newZoom / zoomLevel;
+      
+      // Calcular nova posição de scroll para manter o mouse no mesmo ponto
+      const newScrollX = absoluteMouseX * zoomRatio - mouseX;
+      const newScrollY = absoluteMouseY * zoomRatio - mouseY;
       
       setZoomLevel(newZoom);
       
+      // Aplicar o novo scroll com limites
       setTimeout(() => {
         if (containerRef.current) {
-          const newScrollX = (relativeX * containerRef.current.scrollWidth) - mouseX;
-          const newScrollY = (relativeY * containerRef.current.scrollHeight) - mouseY;
+          // Limitar o scroll aos limites do container
+          const maxScrollX = Math.max(0, containerRef.current.scrollWidth - containerRef.current.clientWidth);
+          const maxScrollY = Math.max(0, containerRef.current.scrollHeight - containerRef.current.clientHeight);
           
-          containerRef.current.scrollLeft = newScrollX;
-          containerRef.current.scrollTop = newScrollY;
+          const clampedX = Math.max(0, Math.min(maxScrollX, newScrollX));
+          const clampedY = Math.max(0, Math.min(maxScrollY, newScrollY));
+          
+          containerRef.current.scrollLeft = clampedX;
+          containerRef.current.scrollTop = clampedY;
+          
+          // Atualizar posição do scroll
+          setScrollPosition({ x: clampedX, y: clampedY });
         }
       }, 0);
     }
@@ -54,8 +81,8 @@ export default function TilesetGrid() {
       setPanStart({ 
         x: mouseEvent.clientX, 
         y: mouseEvent.clientY,
-        scrollX: containerRef.current?.scrollLeft || 0,
-        scrollY: containerRef.current?.scrollTop || 0
+        scrollX: scrollPosition.x,
+        scrollY: scrollPosition.y
       });
     } else if (isRightClick) {
       // Botão direito pode ser usado para desmarcar seleção
@@ -96,19 +123,49 @@ export default function TilesetGrid() {
         const deltaX = panStart.x - e.clientX;
         const deltaY = panStart.y - e.clientY;
         
-        containerRef.current.scrollLeft = panStart.scrollX + deltaX;
-        containerRef.current.scrollTop = panStart.scrollY + deltaY;
+        const newScrollX = panStart.scrollX + deltaX;
+        const newScrollY = panStart.scrollY + deltaY;
+        
+        // Limitar o scroll aos limites do container
+        const maxScrollX = Math.max(0, containerRef.current.scrollWidth - containerRef.current.clientWidth);
+        const maxScrollY = Math.max(0, containerRef.current.scrollHeight - containerRef.current.clientHeight);
+        
+        const clampedX = Math.max(0, Math.min(maxScrollX, newScrollX));
+        const clampedY = Math.max(0, Math.min(maxScrollY, newScrollY));
+        
+        containerRef.current.scrollLeft = clampedX;
+        containerRef.current.scrollTop = clampedY;
+        
+        // Atualizar posição do scroll
+        setScrollPosition({ x: clampedX, y: clampedY });
+      }
+    };
+
+    const handleScroll = () => {
+      if (containerRef.current) {
+        setScrollPosition({
+          x: containerRef.current.scrollLeft,
+          y: containerRef.current.scrollTop
+        });
       }
     };
 
     document.addEventListener('mouseup', handleGlobalMouseUp);
     document.addEventListener('mousemove', handleGlobalMouseMove);
     
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+    }
+    
     return () => {
       document.removeEventListener('mouseup', handleGlobalMouseUp);
       document.removeEventListener('mousemove', handleGlobalMouseMove);
+      if (container) {
+        container.removeEventListener('scroll', handleScroll);
+      }
     };
-  }, [isPanning, panStart]);
+  }, [isPanning, panStart, scrollPosition]);
 
   return (
     <div className="w-full">
@@ -119,104 +176,106 @@ export default function TilesetGrid() {
         </span>
       </div>
       {tileset ? (
-        <div 
-          ref={containerRef}
-          className="border border-custom-light-gray bg-custom-pure-black overflow-auto" 
-          style={{ maxHeight: '300px' }}
-          onMouseDown={(e) => {
-            if (e.button === 1) {
-              e.preventDefault();
-              setIsPanning(true);
-              setPanStart({ 
-                x: e.clientX, 
-                y: e.clientY,
-                scrollX: containerRef.current?.scrollLeft || 0,
-                scrollY: containerRef.current?.scrollTop || 0
-              });
-            }
-          }}
-          onMouseUp={(e) => {
-            if (e.button === 1) {
-              setIsPanning(false);
-              setPanStart(null);
-            }
-          }}
-          onWheel={handleWheel}
-        >
+        <div className="relative">
           <div 
-            className="relative"
-            style={{
-              width: Math.floor(tileset.width / tileSize.width) * TILE_DISPLAY_SIZE,
-              height: Math.floor(tileset.height / tileSize.height) * TILE_DISPLAY_SIZE,
-              backgroundImage: `
-                url(${tileset.src}),
-                linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
-              `,
-              backgroundSize: `
-                ${Math.floor(tileset.width / tileSize.width) * TILE_DISPLAY_SIZE}px ${Math.floor(tileset.height / tileSize.height) * TILE_DISPLAY_SIZE}px,
-                ${TILE_DISPLAY_SIZE}px ${TILE_DISPLAY_SIZE}px,
-                ${TILE_DISPLAY_SIZE}px ${TILE_DISPLAY_SIZE}px
-              `,
-              backgroundRepeat: 'no-repeat, repeat, repeat',
-              backgroundPosition: '0 0, 0 0, 0 0',
-              imageRendering: 'pixelated',
+            ref={containerRef}
+            className="border border-custom-light-gray bg-custom-pure-black overflow-hidden" 
+            style={{ maxHeight: '300px' }}
+            onMouseDown={(e) => {
+              if (e.button === 1) {
+                e.preventDefault();
+                setIsPanning(true);
+                setPanStart({ 
+                  x: e.clientX, 
+                  y: e.clientY,
+                  scrollX: scrollPosition.x,
+                  scrollY: scrollPosition.y
+                });
+              }
             }}
+            onMouseUp={(e) => {
+              if (e.button === 1) {
+                setIsPanning(false);
+                setPanStart(null);
+              }
+            }}
+            onWheel={handleWheel}
           >
-            {/* Grid clicável sem bordas */}
             <div 
-              className="absolute inset-0"
+              className="relative"
               style={{
-                display: 'grid',
-                gridTemplateColumns: `repeat(${Math.floor(tileset.width / tileSize.width)}, ${TILE_DISPLAY_SIZE}px)`,
-                gridTemplateRows: `repeat(${Math.floor(tileset.height / tileSize.height)}, ${TILE_DISPLAY_SIZE}px)`,
+                width: Math.floor(tileset.width / tileSize.width) * TILE_DISPLAY_SIZE,
+                height: Math.floor(tileset.height / tileSize.height) * TILE_DISPLAY_SIZE,
+                backgroundImage: `
+                  url(${tileset.src}),
+                  linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
+                  linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
+                `,
+                backgroundSize: `
+                  ${Math.floor(tileset.width / tileSize.width) * TILE_DISPLAY_SIZE}px ${Math.floor(tileset.height / tileSize.height) * TILE_DISPLAY_SIZE}px,
+                  ${TILE_DISPLAY_SIZE}px ${TILE_DISPLAY_SIZE}px,
+                  ${TILE_DISPLAY_SIZE}px ${TILE_DISPLAY_SIZE}px
+                `,
+                backgroundRepeat: 'no-repeat, repeat, repeat',
+                backgroundPosition: `0 0, 0 0, 0 0`,
+                imageRendering: 'pixelated',
               }}
             >
-              {Array.from({ length: Math.floor(tileset.height / tileSize.height) }, (_, y) =>
-                Array.from({ length: Math.floor(tileset.width / tileSize.width) }, (_, x) => {
-                  const tileId = `${x}_${y}`;
-                  const isActive = activeTile === tileId;
-                  return (
-                    <div
-                      key={`${x}-${y}`}
-                      className={`cursor-pointer border border-transparent hover:border-custom-color hover:bg-custom-color/20 transition-colors ${
-                        isActive ? 'border-custom-color bg-custom-color/30' : ''
-                      }`}
-                      style={{
-                        width: TILE_DISPLAY_SIZE,
-                        height: TILE_DISPLAY_SIZE,
-                        cursor: isPanning ? 'grabbing' : 'grab',
-                      }}
-                      onClick={() => selectTileFromGrid(x, y)}
-                      onMouseDown={(e) => handleMouseDown(x, y, e.button === 2, e.button === 1, e)}
-                      onContextMenu={(e) => e.preventDefault()}
-                      onMouseEnter={(e) => {
-                        handleMouseEnter(x, y);
-                        if (isPanning) {
-                          e.currentTarget.style.cursor = 'grabbing';
-                        } else if (e.buttons === 1) {
-                          e.currentTarget.style.cursor = 'grabbing';
-                        } else if (e.buttons === 2) {
-                          e.currentTarget.style.cursor = 'pointer';
-                        } else {
+              {/* Grid clicável sem bordas */}
+              <div 
+                className="absolute inset-0"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${Math.floor(tileset.width / tileSize.width)}, ${TILE_DISPLAY_SIZE}px)`,
+                  gridTemplateRows: `repeat(${Math.floor(tileset.height / tileSize.height)}, ${TILE_DISPLAY_SIZE}px)`,
+                }}
+              >
+                {Array.from({ length: Math.floor(tileset.height / tileSize.height) }, (_, y) =>
+                  Array.from({ length: Math.floor(tileset.width / tileSize.width) }, (_, x) => {
+                    const tileId = `${x}_${y}`;
+                    const isActive = activeTile === tileId;
+                    return (
+                      <div
+                        key={`${x}-${y}`}
+                        className={`cursor-pointer border border-transparent hover:border-custom-color hover:bg-custom-color/20 transition-colors ${
+                          isActive ? 'border-custom-color bg-custom-color/30' : ''
+                        }`}
+                        style={{
+                          width: TILE_DISPLAY_SIZE,
+                          height: TILE_DISPLAY_SIZE,
+                          cursor: isPanning ? 'grabbing' : 'grab',
+                        }}
+                        onClick={() => selectTileFromGrid(x, y)}
+                        onMouseDown={(e) => handleMouseDown(x, y, e.button === 2, e.button === 1, e)}
+                        onContextMenu={(e) => e.preventDefault()}
+                        onMouseEnter={(e) => {
+                          handleMouseEnter(x, y);
+                          if (isPanning) {
+                            e.currentTarget.style.cursor = 'grabbing';
+                          } else if (e.buttons === 1) {
+                            e.currentTarget.style.cursor = 'grabbing';
+                          } else if (e.buttons === 2) {
+                            e.currentTarget.style.cursor = 'pointer';
+                          } else {
+                            e.currentTarget.style.cursor = 'grab';
+                          }
+                        }}
+                        onMouseUp={handleMouseUp}
+                        onMouseLeave={(e) => {
                           e.currentTarget.style.cursor = 'grab';
-                        }
-                      }}
-                      onMouseUp={handleMouseUp}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.cursor = 'grab';
-                      }}
-                      title={`Tile ${x},${y}`}
-                    >
-                      {isActive && (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <div className="w-3 h-3 bg-custom-color rounded-full opacity-80"></div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
+                        }}
+                        title={`Tile ${x},${y}`}
+                      >
+                        {isActive && (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <div className="w-3 h-3 bg-custom-color rounded-full opacity-80"></div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
         </div>
