@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTileMapStore } from '../../hooks/useTileMap';
 import { useTilesetStore } from '../../hooks/useTileset';
 import { useDrawModeStore } from '../../hooks/useDrawMode';
+import LayerRenderer from './LayerRenderer';
+import BackgroundGrid from './BackgroundGrid';
 
 export default function CanvasEditor() {
   const tileMap = useTileMapStore(s => s.tileMap);
@@ -30,21 +32,48 @@ export default function CanvasEditor() {
   const BASE_TILE_SIZE = 32;
   const GRID_TILE_SIZE = BASE_TILE_SIZE * zoomLevel;
 
+  // Memoizar bounds do mapa para evitar recálculos desnecessários
+  const mapBounds = useMemo(() => {
+    return getMapBounds();
+  }, [tileMap.layers, getMapBounds]);
+
+  // Calcular tamanho do container baseado no conteúdo real
+  const containerSize = useMemo(() => {
+    const bounds = mapBounds;
+    const baseSize = 1000000; // Tamanho mínimo
+    
+    if (bounds.width <= 1 && bounds.height <= 1) {
+      return { width: baseSize, height: baseSize };
+    }
+    
+    // Calcular tamanho baseado no conteúdo real + margem
+    const contentWidth = bounds.width * GRID_TILE_SIZE;
+    const contentHeight = bounds.height * GRID_TILE_SIZE;
+    const margin = Math.max(viewport.width * 2, viewport.height * 2, 1000);
+    
+    return {
+      width: Math.max(baseSize, contentWidth + margin),
+      height: Math.max(baseSize, contentHeight + margin)
+    };
+  }, [mapBounds, GRID_TILE_SIZE, viewport.width, viewport.height]);
+
   // Função para limitar scroll aos limites do grid
   const clampScroll = useCallback((x: number, y: number) => {
-    const maxScrollX = Math.max(0, 1000000 - viewport.width);
-    const maxScrollY = Math.max(0, 1000000 - viewport.height);
+    // Usar o tamanho do container calculado
+    const maxScrollX = Math.max(0, containerSize.width - viewport.width);
+    const maxScrollY = Math.max(0, containerSize.height - viewport.height);
+    
     return {
       x: Math.max(0, Math.min(maxScrollX, x)),
       y: Math.max(0, Math.min(maxScrollY, y))
     };
-  }, [viewport.width, viewport.height]);
+  }, [viewport.width, viewport.height, containerSize.width, containerSize.height]);
 
   // Função para centralizar o viewport
   const centerOnContent = useCallback(() => {
     if (!containerRef.current) return;
     
-    const bounds = getMapBounds();
+    const bounds = mapBounds;
     
     // Se não há tiles ou bounds inválidos, centralizar no meio do grid
     if (bounds.width <= 1 && bounds.height <= 1) {
@@ -75,7 +104,7 @@ export default function CanvasEditor() {
       top: clamped.y,
       behavior: 'smooth'
     });
-  }, [getMapBounds, viewport.width, viewport.height, GRID_TILE_SIZE, clampScroll]);
+  }, [mapBounds, viewport.width, viewport.height, GRID_TILE_SIZE, clampScroll]);
 
   // Função para desenhar tiles em uma área retangular
   const drawRectangularArea = useCallback((startX: number, startY: number, endX: number, endY: number, tileId: string) => {
@@ -255,32 +284,37 @@ export default function CanvasEditor() {
       const currentScrollX = containerRef.current.scrollLeft;
       const currentScrollY = containerRef.current.scrollTop;
       
-      // Calcular posição absoluta do mouse no grid
-      const absoluteMouseX = currentScrollX + mouseX;
-      const absoluteMouseY = currentScrollY + mouseY;
+      // Calcular posição do mouse em coordenadas do grid (antes do zoom)
+      const gridMouseX = (currentScrollX + mouseX) / GRID_TILE_SIZE;
+      const gridMouseY = (currentScrollY + mouseY) / GRID_TILE_SIZE;
       
-      // Calcular a razão de zoom
-      const zoomRatio = newZoom / zoomLevel;
+      // Calcular novo GRID_TILE_SIZE após o zoom
+      const newGridTileSize = BASE_TILE_SIZE * newZoom;
       
-      // Calcular nova posição de scroll para manter o mouse no mesmo ponto
-      const newScrollX = absoluteMouseX * zoomRatio - mouseX;
-      const newScrollY = absoluteMouseY * zoomRatio - mouseY;
+      // Calcular nova posição de scroll para manter o mouse no mesmo ponto do grid
+      const newScrollX = (gridMouseX * newGridTileSize) - mouseX;
+      const newScrollY = (gridMouseY * newGridTileSize) - mouseY;
       
+      // Atualizar o zoom primeiro
       setZoomLevel(newZoom);
       
-      // Aplicar o novo scroll com limites
-      setTimeout(() => {
+      // Aplicar o novo scroll com limites usando requestAnimationFrame para melhor performance
+      requestAnimationFrame(() => {
         if (containerRef.current) {
           const clamped = clampScroll(newScrollX, newScrollY);
           containerRef.current.scrollLeft = clamped.x;
           containerRef.current.scrollTop = clamped.y;
         }
-      }, 0);
+      });
     }
   };
 
   // Adicionar event listeners para mouse up global e mouse move para panning
   useEffect(() => {
+    let animationFrameId: number | null = null;
+    let lastMouseMoveTime = 0;
+    const THROTTLE_MS = 8; // ~120fps para melhor responsividade
+
     const handleGlobalMouseUp = () => {
       setIsDragging(false);
       setIsErasing(false);
@@ -292,18 +326,29 @@ export default function CanvasEditor() {
     };
 
     const handleGlobalMouseMove = (e: MouseEvent) => {
-      // Só aplicar panning se estiver realmente fazendo panning e não desenhando
-      if (isPanning && panStart && containerRef.current && !isDragging && !isErasing) {
-        const deltaX = panStart.x - e.clientX;
-        const deltaY = panStart.y - e.clientY;
-        
-        const newScrollX = panStart.scrollX + deltaX;
-        const newScrollY = panStart.scrollY + deltaY;
-        
-        const clamped = clampScroll(newScrollX, newScrollY);
-        containerRef.current.scrollLeft = clamped.x;
-        containerRef.current.scrollTop = clamped.y;
+      const now = Date.now();
+      if (now - lastMouseMoveTime < THROTTLE_MS) return;
+      lastMouseMoveTime = now;
+
+      // Cancelar frame anterior se existir
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
       }
+
+      animationFrameId = requestAnimationFrame(() => {
+        // Só aplicar panning se estiver realmente fazendo panning e não desenhando
+        if (isPanning && panStart && containerRef.current && !isDragging && !isErasing) {
+          const deltaX = panStart.x - e.clientX;
+          const deltaY = panStart.y - e.clientY;
+          
+          const newScrollX = panStart.scrollX + deltaX;
+          const newScrollY = panStart.scrollY + deltaY;
+          
+          const clamped = clampScroll(newScrollX, newScrollY);
+          containerRef.current.scrollLeft = clamped.x;
+          containerRef.current.scrollTop = clamped.y;
+        }
+      });
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -322,16 +367,40 @@ export default function CanvasEditor() {
       document.removeEventListener('mouseup', handleGlobalMouseUp);
       document.removeEventListener('mousemove', handleGlobalMouseMove);
       document.removeEventListener('keydown', handleKeyDown);
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
     };
   }, [isPanning, panStart, isDragging, isErasing, clampScroll, centerOnContent, drawMode]);
 
-  // Calcular células visíveis baseadas no viewport e scroll
+  // Calcular células visíveis baseadas no viewport e scroll com limitação
   const visibleCells = useMemo(() => {
     // Garantir que as células sejam alinhadas com o grid
     const startX = Math.floor(scrollPosition.x / GRID_TILE_SIZE);
     const startY = Math.floor(scrollPosition.y / GRID_TILE_SIZE);
-    const visibleCols = Math.ceil(viewport.width / GRID_TILE_SIZE) + 2; // Buffer reduzido
-    const visibleRows = Math.ceil(viewport.height / GRID_TILE_SIZE) + 2; // Buffer reduzido
+    
+    // Calcular células visíveis com buffer otimizado
+    const visibleCols = Math.ceil(viewport.width / GRID_TILE_SIZE) + 1; // Buffer reduzido
+    const visibleRows = Math.ceil(viewport.height / GRID_TILE_SIZE) + 1; // Buffer reduzido
+    
+    // Limitar o número máximo de células para evitar travamentos
+    const maxCells = 2000; // Máximo de 2000 células visíveis
+    const totalCells = visibleCols * visibleRows;
+    
+    if (totalCells > maxCells) {
+      // Se exceder o limite, reduzir o buffer
+      const scale = Math.sqrt(maxCells / totalCells);
+      const limitedCols = Math.floor(visibleCols * scale);
+      const limitedRows = Math.floor(visibleRows * scale);
+      
+      const cells = [];
+      for (let y = startY; y < startY + limitedRows; y++) {
+        for (let x = startX; x < startX + limitedCols; x++) {
+          cells.push({ x, y });
+        }
+      }
+      return cells;
+    }
 
     const cells = [];
     for (let y = startY; y < startY + visibleRows; y++) {
@@ -342,30 +411,49 @@ export default function CanvasEditor() {
     return cells;
   }, [scrollPosition.x, scrollPosition.y, viewport.width, viewport.height, GRID_TILE_SIZE]);
 
-  function renderTile(cell: string | null) {
+  // Memoizar cálculos de escala para evitar recálculos desnecessários
+  const tileScale = useMemo(() => ({
+    x: GRID_TILE_SIZE / tileSize.width,
+    y: GRID_TILE_SIZE / tileSize.height
+  }), [GRID_TILE_SIZE, tileSize.width, tileSize.height]);
+
+  // Cache para tiles renderizados para evitar recriação desnecessária
+  const tileCache = useRef(new Map<string, React.ReactNode>());
+  
+  const renderTile = useCallback((cell: string | null) => {
     if (!cell || !tileset) return null;
+    
+    // Verificar cache primeiro
+    const cacheKey = `${cell}_${GRID_TILE_SIZE}_${tileScale.x}_${tileScale.y}`;
+    if (tileCache.current.has(cacheKey)) {
+      return tileCache.current.get(cacheKey);
+    }
     
     // Extrair coordenadas x, y do tileId (formato: "x_y")
     const [tileX, tileY] = cell.split('_').map(Number);
     
-    // Calcular escala para ajustar o tile ao grid
-    const scaleX = GRID_TILE_SIZE / tileSize.width;
-    const scaleY = GRID_TILE_SIZE / tileSize.height;
-    
-    return (
+    const tileElement = (
       <div
         key={`${tileX}_${tileY}`}
         style={{
           width: GRID_TILE_SIZE,
           height: GRID_TILE_SIZE,
           backgroundImage: `url(${tileset.src})`,
-          backgroundPosition: `-${tileX * tileSize.width * scaleX}px -${tileY * tileSize.height * scaleY}px`,
-          backgroundSize: `${tileset.width * scaleX}px ${tileset.height * scaleY}px`,
+          backgroundPosition: `-${tileX * tileSize.width * tileScale.x}px -${tileY * tileSize.height * tileScale.y}px`,
+          backgroundSize: `${tileset.width * tileScale.x}px ${tileset.height * tileScale.y}px`,
           imageRendering: 'pixelated',
         }}
       />
     );
-  }
+    
+    // Armazenar no cache (limitar tamanho do cache)
+    if (tileCache.current.size > 1000) {
+      tileCache.current.clear();
+    }
+    tileCache.current.set(cacheKey, tileElement);
+    
+    return tileElement;
+  }, [tileset, GRID_TILE_SIZE, tileSize.width, tileSize.height, tileScale]);
 
   // Calcular área de seleção retangular para renderização
   const selectionArea = useMemo(() => {
@@ -420,8 +508,12 @@ export default function CanvasEditor() {
       <div className="absolute bottom-4 right-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded text-sm z-50">
         <div className="text-xs">
           <div>Grid Size: {GRID_TILE_SIZE}px</div>
+          <div>Zoom: {Math.round(zoomLevel * 100)}%</div>
           <div>Scroll: {Math.round(scrollPosition.x)}, {Math.round(scrollPosition.y)}</div>
           <div>Cells: {visibleCells.length}</div>
+          <div>Viewport: {viewport.width}x{viewport.height}</div>
+          <div>Bounds: {mapBounds.width}x{mapBounds.height}</div>
+          <div>Container: {Math.round(containerSize.width/1000)}k x {Math.round(containerSize.height/1000)}k</div>
         </div>
       </div>
 
@@ -453,54 +545,27 @@ export default function CanvasEditor() {
         <div 
           style={{ 
             position: 'relative',
-            width: '1000000px', // Grid realmente infinito
-            height: '1000000px'
+            width: `${containerSize.width}px`,
+            height: `${containerSize.height}px`
           }}
         >
-          {/* Grid infinito de fundo - move com o scroll */}
-          <div 
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              backgroundImage: `
-                linear-gradient(rgba(255,255,255,0.2) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,0.2) 1px, transparent 1px)
-              `,
-              backgroundSize: `${GRID_TILE_SIZE}px ${GRID_TILE_SIZE}px`,
-              backgroundPosition: '0 0'
-            }}
+          {/* Grid de fundo - apenas células visíveis */}
+          <BackgroundGrid 
+            visibleCells={visibleCells}
+            GRID_TILE_SIZE={GRID_TILE_SIZE}
           />
 
           {/* Renderizar layers */}
           {tileMap.layers.map((layer, layerIndex) => (
             layer.visible && (
-              <div 
-                key={layer.id} 
-                style={{ 
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  opacity: layer.opacity,
-                  zIndex: tileMap.layers.length - layerIndex,
-                  pointerEvents: 'none'
-                }}
-              >
-                {layer.data.map((row, y) => 
-                  row.map((cell, x) => 
-                    cell && (
-                      <div
-                        key={`${layer.id}-${x}-${y}`}
-                        style={{
-                          position: 'absolute',
-                          left: x * GRID_TILE_SIZE,
-                          top: y * GRID_TILE_SIZE,
-                        }}
-                      >
-                        {renderTile(cell)}
-                      </div>
-                    )
-                  )
-                )}
-              </div>
+              <LayerRenderer
+                key={layer.id}
+                layer={layer}
+                layerIndex={layerIndex}
+                totalLayers={tileMap.layers.length}
+                GRID_TILE_SIZE={GRID_TILE_SIZE}
+                renderTile={renderTile}
+              />
             )
           ))}
 
@@ -542,7 +607,7 @@ export default function CanvasEditor() {
                   top: y * GRID_TILE_SIZE,
                   width: GRID_TILE_SIZE,
                   height: GRID_TILE_SIZE,
-                  border: '1px solid rgba(255,255,255,0.3)', // Debug: borda temporária
+                  border: 'none',
                   cursor: isPanning ? 'grabbing' : 'grab',
                   backgroundColor: 'transparent',
                 }}
