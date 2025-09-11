@@ -12,6 +12,8 @@ export default function CanvasEditor() {
   const getMapBounds = useTileMapStore(s => s.getMapBounds);
   const tileset = useTilesetStore(s => s.tileset);
   const activeTile = useTilesetStore(s => s.activeTile);
+  const selectedTiles = useTilesetStore(s => s.selectedTiles);
+  const selectionBounds = useTilesetStore(s => s.selectionBounds);
   const tileSize = useTilesetStore(s => s.tileSize);
   const drawMode = useDrawModeStore(s => s.drawMode);
   
@@ -26,6 +28,8 @@ export default function CanvasEditor() {
   const [panStart, setPanStart] = useState<{ x: number; y: number; scrollX: number; scrollY: number } | null>(null);
   const [rectSelection, setRectSelection] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [mousePosition, setMousePosition] = useState<{ x: number; y: number } | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Tamanho base do grid
@@ -105,6 +109,47 @@ export default function CanvasEditor() {
       behavior: 'smooth'
     });
   }, [mapBounds, viewport.width, viewport.height, GRID_TILE_SIZE, clampScroll]);
+
+  // Função para calcular posição do mouse no grid
+  const getMouseGridPosition = useCallback((mouseX: number, mouseY: number) => {
+    if (!containerRef.current) return null;
+    
+    const rect = containerRef.current.getBoundingClientRect();
+    const relativeX = mouseX - rect.left;
+    const relativeY = mouseY - rect.top;
+    
+    const gridX = Math.floor((scrollPosition.x + relativeX) / GRID_TILE_SIZE);
+    const gridY = Math.floor((scrollPosition.y + relativeY) / GRID_TILE_SIZE);
+    
+    return { x: gridX, y: gridY };
+  }, [scrollPosition.x, scrollPosition.y, GRID_TILE_SIZE]);
+
+  // Função para desenhar múltiplos tiles selecionados
+  const drawMultipleTiles = useCallback((startX: number, startY: number) => {
+    if (!selectedTiles.length || !selectionBounds) return;
+    
+    const tilesWidth = selectionBounds.maxX - selectionBounds.minX + 1;
+    const tilesHeight = selectionBounds.maxY - selectionBounds.minY + 1;
+    
+    // Calcular quantas vezes repetir o padrão baseado no tamanho da seleção
+    const patternWidth = tilesWidth;
+    const patternHeight = tilesHeight;
+    
+    // Desenhar o padrão de tiles selecionados
+    for (let tileIndex = 0; tileIndex < selectedTiles.length; tileIndex++) {
+      const tileId = selectedTiles[tileIndex];
+      
+      // Calcular posição relativa do tile na seleção
+      const relativeX = tileIndex % patternWidth;
+      const relativeY = Math.floor(tileIndex / patternWidth);
+      
+      // Calcular posição final no canvas
+      const canvasX = startX + relativeX;
+      const canvasY = startY + relativeY;
+      
+      placeTile(canvasX, canvasY, tileId);
+    }
+  }, [selectedTiles, selectionBounds, placeTile]);
 
   // Função para desenhar tiles em uma área retangular
   const drawRectangularArea = useCallback((startX: number, startY: number, endX: number, endY: number, tileId: string) => {
@@ -198,6 +243,10 @@ export default function CanvasEditor() {
     if (isRightClick) {
       removeTile(x, y);
       setLastErasedCell({ x, y });
+    } else if (selectedTiles.length > 1) {
+      // Desenhar múltiplos tiles selecionados
+      drawMultipleTiles(x, y);
+      setLastDrawnCell({ x, y });
     } else if (activeTile) {
       placeTile(x, y, activeTile);
       setLastDrawnCell({ x, y });
@@ -220,6 +269,11 @@ export default function CanvasEditor() {
       setRectSelection({ startX: x, startY: y, endX: x, endY: y });
       removeTile(x, y);
       setLastErasedCell({ x, y });
+    } else if (selectedTiles.length > 1) {
+      setIsDragging(true);
+      setRectSelection({ startX: x, startY: y, endX: x, endY: y });
+      drawMultipleTiles(x, y);
+      setLastDrawnCell({ x, y });
     } else if (activeTile) {
       setIsDragging(true);
       setRectSelection({ startX: x, startY: y, endX: x, endY: y });
@@ -239,14 +293,32 @@ export default function CanvasEditor() {
         removeTile(x, y);
       }
       setLastErasedCell({ x, y });
-    } else if (isDragging && activeTile && lastDrawnCell && (lastDrawnCell.x !== x || lastDrawnCell.y !== y)) {
+    } else if (isDragging && lastDrawnCell && (lastDrawnCell.x !== x || lastDrawnCell.y !== y)) {
       if (rectSelection && drawMode === 'rectangular') {
         // Atualizar seleção retangular
         setRectSelection(prev => prev ? { ...prev, endX: x, endY: y } : null);
         // Desenhar área retangular
-        drawRectangularArea(rectSelection.startX, rectSelection.startY, x, y, activeTile);
+        if (selectedTiles.length > 1) {
+          // Para múltiplos tiles, desenhar o padrão completo na área retangular
+          const minX = Math.min(rectSelection.startX, x);
+          const maxX = Math.max(rectSelection.startX, x);
+          const minY = Math.min(rectSelection.startY, y);
+          const maxY = Math.max(rectSelection.startY, y);
+          
+          for (let canvasY = minY; canvasY <= maxY; canvasY++) {
+            for (let canvasX = minX; canvasX <= maxX; canvasX++) {
+              drawMultipleTiles(canvasX, canvasY);
+            }
+          }
+        } else if (activeTile) {
+          drawRectangularArea(rectSelection.startX, rectSelection.startY, x, y, activeTile);
+        }
       } else {
-        placeTile(x, y, activeTile);
+        if (selectedTiles.length > 1) {
+          drawMultipleTiles(x, y);
+        } else if (activeTile) {
+          placeTile(x, y, activeTile);
+        }
       }
       setLastDrawnCell({ x, y });
     }
@@ -348,6 +420,15 @@ export default function CanvasEditor() {
           containerRef.current.scrollLeft = clamped.x;
           containerRef.current.scrollTop = clamped.y;
         }
+        
+        // Atualizar posição do mouse para preview
+        if (!isPanning && !isDragging && !isErasing && containerRef.current && (selectedTiles.length > 0 || activeTile)) {
+          const gridPos = getMouseGridPosition(e.clientX, e.clientY);
+          if (gridPos) {
+            setMousePosition(gridPos);
+            setShowPreview(true);
+          }
+        }
       });
     };
 
@@ -359,19 +440,32 @@ export default function CanvasEditor() {
       }
     };
 
+    const handleMouseLeave = () => {
+      setShowPreview(false);
+      setMousePosition(null);
+    };
+
     document.addEventListener('mouseup', handleGlobalMouseUp);
     document.addEventListener('mousemove', handleGlobalMouseMove);
     document.addEventListener('keydown', handleKeyDown);
+    
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('mouseleave', handleMouseLeave);
+    }
     
     return () => {
       document.removeEventListener('mouseup', handleGlobalMouseUp);
       document.removeEventListener('mousemove', handleGlobalMouseMove);
       document.removeEventListener('keydown', handleKeyDown);
+      if (container) {
+        container.removeEventListener('mouseleave', handleMouseLeave);
+      }
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
       }
     };
-  }, [isPanning, panStart, isDragging, isErasing, clampScroll, centerOnContent, drawMode]);
+  }, [isPanning, panStart, isDragging, isErasing, clampScroll, centerOnContent, drawMode, getMouseGridPosition]);
 
   // Calcular células visíveis baseadas no viewport e scroll com limitação
   const visibleCells = useMemo(() => {
@@ -416,6 +510,54 @@ export default function CanvasEditor() {
     x: GRID_TILE_SIZE / tileSize.width,
     y: GRID_TILE_SIZE / tileSize.height
   }), [GRID_TILE_SIZE, tileSize.width, tileSize.height]);
+
+  // Função para renderizar preview dos tiles selecionados
+  const renderPreviewTiles = useCallback((startX: number, startY: number) => {
+    if (!selectedTiles.length || !selectionBounds || !tileset) return null;
+    
+    const tilesWidth = selectionBounds.maxX - selectionBounds.minX + 1;
+    const tilesHeight = selectionBounds.maxY - selectionBounds.minY + 1;
+    
+    const previewTiles = [];
+    
+    for (let tileIndex = 0; tileIndex < selectedTiles.length; tileIndex++) {
+      const tileId = selectedTiles[tileIndex];
+      
+      // Calcular posição relativa do tile na seleção
+      const relativeX = tileIndex % tilesWidth;
+      const relativeY = Math.floor(tileIndex / tilesWidth);
+      
+      // Calcular posição final no canvas
+      const canvasX = startX + relativeX;
+      const canvasY = startY + relativeY;
+      
+      // Extrair coordenadas x, y do tileId (formato: "x_y")
+      const [tileX, tileY] = tileId.split('_').map(Number);
+      
+      previewTiles.push(
+        <div
+          key={`preview-${tileIndex}`}
+          style={{
+            position: 'absolute',
+            left: canvasX * GRID_TILE_SIZE,
+            top: canvasY * GRID_TILE_SIZE,
+            width: GRID_TILE_SIZE,
+            height: GRID_TILE_SIZE,
+            backgroundImage: `url(${tileset.src})`,
+            backgroundPosition: `-${tileX * tileSize.width * tileScale.x}px -${tileY * tileSize.height * tileScale.y}px`,
+            backgroundSize: `${tileset.width * tileScale.x}px ${tileset.height * tileScale.y}px`,
+            imageRendering: 'pixelated',
+            opacity: 0.7,
+            border: '1px dashed rgba(0, 255, 0, 0.8)',
+            pointerEvents: 'none',
+            zIndex: 1500,
+          }}
+        />
+      );
+    }
+    
+    return previewTiles;
+  }, [selectedTiles, selectionBounds, tileset, GRID_TILE_SIZE, tileSize, tileScale]);
 
   // Cache para tiles renderizados para evitar recriação desnecessária
   const tileCache = useRef(new Map<string, React.ReactNode>());
@@ -497,6 +639,7 @@ export default function CanvasEditor() {
       <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-50 text-white px-3 py-1 rounded text-sm z-50">
         {isDragging ? 'Desenhando' : isErasing ? 'Apagando' : isPanning ? 'Panning' : 'Pronto'}
         {drawMode === 'rectangular' && ' (Retangular)'}
+        {selectedTiles.length > 1 && ` (${selectedTiles.length} tiles)`}
       </div>
 
       {/* Indicador de navegação */}
@@ -586,6 +729,32 @@ export default function CanvasEditor() {
             />
           )}
 
+          {/* Preview dos tiles selecionados */}
+          {showPreview && mousePosition && (selectedTiles.length > 0 || activeTile) && !isDragging && !isErasing && !isPanning && (
+            <div style={{ position: 'absolute', top: 0, left: 0, zIndex: 1500, pointerEvents: 'none' }}>
+              {selectedTiles.length > 1 ? (
+                renderPreviewTiles(mousePosition.x, mousePosition.y)
+              ) : activeTile ? (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: mousePosition.x * GRID_TILE_SIZE,
+                    top: mousePosition.y * GRID_TILE_SIZE,
+                    width: GRID_TILE_SIZE,
+                    height: GRID_TILE_SIZE,
+                    backgroundImage: `url(${tileset?.src})`,
+                    backgroundPosition: `-${activeTile.split('_')[0] * tileSize.width * tileScale.x}px -${activeTile.split('_')[1] * tileSize.height * tileScale.y}px`,
+                    backgroundSize: `${tileset?.width * tileScale.x}px ${tileset?.height * tileScale.y}px`,
+                    imageRendering: 'pixelated',
+                    opacity: 0.7,
+                    border: '1px dashed rgba(0, 255, 0, 0.8)',
+                    pointerEvents: 'none',
+                  }}
+                />
+              ) : null}
+            </div>
+          )}
+
           {/* Grid clicável infinito - apenas células visíveis */}
           <div 
             style={{ 
@@ -620,7 +789,7 @@ export default function CanvasEditor() {
                     e.currentTarget.style.cursor = 'grabbing';
                   } else if (e.buttons === 1) {
                     e.currentTarget.style.cursor = 'grabbing';
-                  } else if (activeTile && e.buttons !== 2) {
+                  } else if ((activeTile || selectedTiles.length > 0) && e.buttons !== 2) {
                     e.currentTarget.style.backgroundColor = 'rgba(0,255,0,0.2)';
                     e.currentTarget.style.cursor = 'pointer';
                   } else if (e.buttons === 2) {

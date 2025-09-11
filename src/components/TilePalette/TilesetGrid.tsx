@@ -8,13 +8,17 @@ export default function TilesetGrid() {
   const tileset = useTilesetStore(s => s.tileset);
   const tileSize = useTilesetStore(s => s.tileSize);
   const activeTile = useTilesetStore(s => s.activeTile);
+  const selectedTiles = useTilesetStore(s => s.selectedTiles);
+  const selectionBounds = useTilesetStore(s => s.selectionBounds);
   const selectTileFromGrid = useTilesetStore(s => s.selectTileFromGrid);
+  const selectTilesInArea = useTilesetStore(s => s.selectTilesInArea);
+  const clearSelection = useTilesetStore(s => s.clearSelection);
   
   const [zoomLevel, setZoomLevel] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number; scrollX: number; scrollY: number } | null>(null);
-  const [lastSelectedTile, setLastSelectedTile] = useState<{ x: number; y: number } | null>(null);
+  const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
   const [scrollPosition, setScrollPosition] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -85,37 +89,37 @@ export default function TilesetGrid() {
         scrollY: scrollPosition.y
       });
     } else if (isRightClick) {
-      // Botão direito pode ser usado para desmarcar seleção
-      selectTileFromGrid(x, y);
-      setLastSelectedTile({ x, y });
+      // Botão direito limpa a seleção
+      clearSelection();
     } else {
-      setIsDragging(true);
-      selectTileFromGrid(x, y);
-      setLastSelectedTile({ x, y });
+      // Botão esquerdo inicia seleção
+      setIsSelecting(true);
+      setSelectionStart({ x, y });
+      selectTilesInArea(x, y, x, y); // Selecionar apenas o tile inicial
     }
   };
 
   const handleMouseEnter = (x: number, y: number) => {
-    if (isDragging && lastSelectedTile && (lastSelectedTile.x !== x || lastSelectedTile.y !== y)) {
-      selectTileFromGrid(x, y);
-      setLastSelectedTile({ x, y });
+    if (isSelecting && selectionStart) {
+      // Atualizar seleção conforme arrasta
+      selectTilesInArea(selectionStart.x, selectionStart.y, x, y);
     }
   };
 
   const handleMouseUp = () => {
-    setIsDragging(false);
     setIsPanning(false);
-    setLastSelectedTile(null);
+    setIsSelecting(false);
     setPanStart(null);
+    setSelectionStart(null);
   };
 
   // Event listeners globais
   useEffect(() => {
     const handleGlobalMouseUp = () => {
-      setIsDragging(false);
       setIsPanning(false);
-      setLastSelectedTile(null);
+      setIsSelecting(false);
       setPanStart(null);
+      setSelectionStart(null);
     };
 
     const handleGlobalMouseMove = (e: MouseEvent) => {
@@ -234,16 +238,19 @@ export default function TilesetGrid() {
                   Array.from({ length: Math.floor(tileset.width / tileSize.width) }, (_, x) => {
                     const tileId = `${x}_${y}`;
                     const isActive = activeTile === tileId;
+                    const isSelected = selectedTiles.includes(tileId);
+                    
                     return (
                       <div
                         key={`${x}-${y}`}
                         className={`cursor-pointer border border-transparent hover:border-custom-color hover:bg-custom-color/20 transition-colors ${
-                          isActive ? 'border-custom-color bg-custom-color/30' : ''
+                          isActive ? 'border-custom-color bg-custom-color/30' : 
+                          isSelected ? 'border-blue-400 bg-blue-400/20' : ''
                         }`}
                         style={{
                           width: TILE_DISPLAY_SIZE,
                           height: TILE_DISPLAY_SIZE,
-                          cursor: isPanning ? 'grabbing' : 'grab',
+                          cursor: isPanning ? 'grabbing' : isSelecting ? 'crosshair' : 'grab',
                         }}
                         onClick={() => selectTileFromGrid(x, y)}
                         onMouseDown={(e) => handleMouseDown(x, y, e.button === 2, e.button === 1, e)}
@@ -252,8 +259,10 @@ export default function TilesetGrid() {
                           handleMouseEnter(x, y);
                           if (isPanning) {
                             e.currentTarget.style.cursor = 'grabbing';
+                          } else if (isSelecting) {
+                            e.currentTarget.style.cursor = 'crosshair';
                           } else if (e.buttons === 1) {
-                            e.currentTarget.style.cursor = 'grabbing';
+                            e.currentTarget.style.cursor = 'crosshair';
                           } else if (e.buttons === 2) {
                             e.currentTarget.style.cursor = 'pointer';
                           } else {
@@ -264,11 +273,16 @@ export default function TilesetGrid() {
                         onMouseLeave={(e) => {
                           e.currentTarget.style.cursor = 'grab';
                         }}
-                        title={`Tile ${x},${y}`}
+                        title={`Tile ${x},${y}${isSelected ? ' (Selected)' : ''}`}
                       >
                         {isActive && (
                           <div className="w-full h-full flex items-center justify-center">
                             <div className="w-3 h-3 bg-custom-color rounded-full opacity-80"></div>
+                          </div>
+                        )}
+                        {isSelected && !isActive && (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <div className="w-2 h-2 bg-blue-400 rounded-full opacity-60"></div>
                           </div>
                         )}
                       </div>
@@ -290,10 +304,28 @@ export default function TilesetGrid() {
       )}
       
       {/* Informações do tile selecionado */}
-      {activeTile && (
+      {(activeTile || selectedTiles.length > 0) && (
         <div className="mt-2 p-2 bg-custom-black border border-custom-light-gray text-xs text-custom-white">
-          <div className="font-medium">Selected Tile: {activeTile}</div>
-          <div className="text-custom-light-gray">Size: {tileSize.width} x {tileSize.height}</div>
+          {selectedTiles.length > 1 ? (
+            <>
+              <div className="font-medium">Selected Tiles: {selectedTiles.length}</div>
+              <div className="text-custom-light-gray">
+                Area: {selectionBounds ? 
+                  `${selectionBounds.maxX - selectionBounds.minX + 1} x ${selectionBounds.maxY - selectionBounds.minY + 1}` : 
+                  'Multiple'
+                }
+              </div>
+              <div className="text-custom-light-gray">Size: {tileSize.width} x {tileSize.height}</div>
+              <div className="text-blue-400 mt-1">
+                Active: {activeTile}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="font-medium">Selected Tile: {activeTile}</div>
+              <div className="text-custom-light-gray">Size: {tileSize.width} x {tileSize.height}</div>
+            </>
+          )}
         </div>
       )}
     </div>
