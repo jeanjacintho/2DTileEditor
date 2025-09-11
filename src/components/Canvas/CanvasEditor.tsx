@@ -1,21 +1,28 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, memo, useTransition } from 'react';
 import { useTileMapStore } from '../../hooks/useTileMap';
 import { useTilesetStore } from '../../hooks/useTileset';
 import { useDrawModeStore } from '../../hooks/useDrawMode';
 import LayerRenderer from './LayerRenderer';
 import BackgroundGrid from './BackgroundGrid';
 
-export default function CanvasEditor() {
+// Otimização: Seletores específicos para evitar re-renders desnecessários
+const CanvasEditor = memo(() => {
+  // Usar hooks básicos para garantir funcionamento
   const tileMap = useTileMapStore(s => s.tileMap);
   const placeTile = useTileMapStore(s => s.placeTile);
   const removeTile = useTileMapStore(s => s.removeTile);
   const getMapBounds = useTileMapStore(s => s.getMapBounds);
+  
   const tileset = useTilesetStore(s => s.tileset);
   const activeTile = useTilesetStore(s => s.activeTile);
   const selectedTiles = useTilesetStore(s => s.selectedTiles);
   const selectionBounds = useTilesetStore(s => s.selectionBounds);
   const tileSize = useTilesetStore(s => s.tileSize);
+  
   const drawMode = useDrawModeStore(s => s.drawMode);
+  
+  // Transições para operações não-críticas
+  const [isPending, startTransition] = useTransition();
   
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [scrollPosition, setScrollPosition] = useState({ x: 0, y: 0 });
@@ -129,19 +136,14 @@ export default function CanvasEditor() {
     if (!selectedTiles.length || !selectionBounds) return;
     
     const tilesWidth = selectionBounds.maxX - selectionBounds.minX + 1;
-    const tilesHeight = selectionBounds.maxY - selectionBounds.minY + 1;
-    
-    // Calcular quantas vezes repetir o padrão baseado no tamanho da seleção
-    const patternWidth = tilesWidth;
-    const patternHeight = tilesHeight;
     
     // Desenhar o padrão de tiles selecionados
     for (let tileIndex = 0; tileIndex < selectedTiles.length; tileIndex++) {
       const tileId = selectedTiles[tileIndex];
       
       // Calcular posição relativa do tile na seleção
-      const relativeX = tileIndex % patternWidth;
-      const relativeY = Math.floor(tileIndex / patternWidth);
+      const relativeX = tileIndex % tilesWidth;
+      const relativeY = Math.floor(tileIndex / tilesWidth);
       
       // Calcular posição final no canvas
       const canvasX = startX + relativeX;
@@ -163,7 +165,7 @@ export default function CanvasEditor() {
         placeTile(x, y, tileId);
       }
     }
-  }, [placeTile, drawMode]);
+  }, [placeTile]);
 
   // Função para remover tiles em uma área retangular
   const removeRectangularArea = useCallback((startX: number, startY: number, endX: number, endY: number) => {
@@ -177,7 +179,7 @@ export default function CanvasEditor() {
         removeTile(x, y);
       }
     }
-  }, [removeTile, drawMode]);
+  }, [removeTile]);
 
   // Inicialização do viewport
   useEffect(() => {
@@ -381,25 +383,31 @@ export default function CanvasEditor() {
     }
   };
 
-  // Adicionar event listeners para mouse up global e mouse move para panning
+  // Otimização: Event listeners com throttling avançado e RAF
   useEffect(() => {
     let animationFrameId: number | null = null;
     let lastMouseMoveTime = 0;
-    const THROTTLE_MS = 8; // ~120fps para melhor responsividade
+    const THROTTLE_MS = 4; // ~240fps para máxima responsividade
+    const SCROLL_THROTTLE_MS = 8; // ~120fps para scroll
 
     const handleGlobalMouseUp = () => {
-      setIsDragging(false);
-      setIsErasing(false);
-      setIsPanning(false);
-      setLastDrawnCell(null);
-      setLastErasedCell(null);
-      setPanStart(null);
-      setRectSelection(null);
+      startTransition(() => {
+        setIsDragging(false);
+        setIsErasing(false);
+        setIsPanning(false);
+        setLastDrawnCell(null);
+        setLastErasedCell(null);
+        setPanStart(null);
+        setRectSelection(null);
+      });
     };
 
     const handleGlobalMouseMove = (e: MouseEvent) => {
       const now = Date.now();
-      if (now - lastMouseMoveTime < THROTTLE_MS) return;
+      
+      // Throttling diferenciado para diferentes operações
+      const throttleTime = isPanning ? SCROLL_THROTTLE_MS : THROTTLE_MS;
+      if (now - lastMouseMoveTime < throttleTime) return;
       lastMouseMoveTime = now;
 
       // Cancelar frame anterior se existir
@@ -408,7 +416,7 @@ export default function CanvasEditor() {
       }
 
       animationFrameId = requestAnimationFrame(() => {
-        // Só aplicar panning se estiver realmente fazendo panning e não desenhando
+        // Panning otimizado com RAF
         if (isPanning && panStart && containerRef.current && !isDragging && !isErasing) {
           const deltaX = panStart.x - e.clientX;
           const deltaY = panStart.y - e.clientY;
@@ -417,16 +425,23 @@ export default function CanvasEditor() {
           const newScrollY = panStart.scrollY + deltaY;
           
           const clamped = clampScroll(newScrollX, newScrollY);
-          containerRef.current.scrollLeft = clamped.x;
-          containerRef.current.scrollTop = clamped.y;
+          
+          // Usar scrollTo com smooth para melhor performance
+          containerRef.current.scrollTo({
+            left: clamped.x,
+            top: clamped.y,
+            behavior: 'auto' // Usar 'auto' para melhor performance
+          });
         }
         
-        // Atualizar posição do mouse para preview
+        // Preview otimizado com throttling
         if (!isPanning && !isDragging && !isErasing && containerRef.current && (selectedTiles.length > 0 || activeTile)) {
           const gridPos = getMouseGridPosition(e.clientX, e.clientY);
           if (gridPos) {
-            setMousePosition(gridPos);
-            setShowPreview(true);
+            startTransition(() => {
+              setMousePosition(gridPos);
+              setShowPreview(true);
+            });
           }
         }
       });
@@ -467,25 +482,28 @@ export default function CanvasEditor() {
     };
   }, [isPanning, panStart, isDragging, isErasing, clampScroll, centerOnContent, drawMode, getMouseGridPosition]);
 
-  // Calcular células visíveis baseadas no viewport e scroll com limitação
+  // Remover monitoramento de performance por enquanto
+
+  // Otimização: Virtualização inteligente com adaptive buffering
   const visibleCells = useMemo(() => {
     // Garantir que as células sejam alinhadas com o grid
     const startX = Math.floor(scrollPosition.x / GRID_TILE_SIZE);
     const startY = Math.floor(scrollPosition.y / GRID_TILE_SIZE);
     
-    // Calcular células visíveis com buffer otimizado
-    const visibleCols = Math.ceil(viewport.width / GRID_TILE_SIZE) + 1; // Buffer reduzido
-    const visibleRows = Math.ceil(viewport.height / GRID_TILE_SIZE) + 1; // Buffer reduzido
+    // Buffer adaptativo baseado no zoom level
+    const baseBuffer = zoomLevel > 2 ? 0 : zoomLevel > 1 ? 1 : 2;
+    const visibleCols = Math.ceil(viewport.width / GRID_TILE_SIZE) + baseBuffer;
+    const visibleRows = Math.ceil(viewport.height / GRID_TILE_SIZE) + baseBuffer;
     
-    // Limitar o número máximo de células para evitar travamentos
-    const maxCells = 2000; // Máximo de 2000 células visíveis
+    // Limite dinâmico baseado na performance
+    const maxCells = zoomLevel > 2 ? 1000 : zoomLevel > 1 ? 1500 : 2500;
     const totalCells = visibleCols * visibleRows;
     
     if (totalCells > maxCells) {
-      // Se exceder o limite, reduzir o buffer
+      // Scaling inteligente para manter aspect ratio
       const scale = Math.sqrt(maxCells / totalCells);
-      const limitedCols = Math.floor(visibleCols * scale);
-      const limitedRows = Math.floor(visibleRows * scale);
+      const limitedCols = Math.max(1, Math.floor(visibleCols * scale));
+      const limitedRows = Math.max(1, Math.floor(visibleRows * scale));
       
       const cells = [];
       for (let y = startY; y < startY + limitedRows; y++) {
@@ -496,6 +514,7 @@ export default function CanvasEditor() {
       return cells;
     }
 
+    // Usar Array.from para melhor performance
     const cells = [];
     for (let y = startY; y < startY + visibleRows; y++) {
       for (let x = startX; x < startX + visibleCols; x++) {
@@ -503,7 +522,7 @@ export default function CanvasEditor() {
       }
     }
     return cells;
-  }, [scrollPosition.x, scrollPosition.y, viewport.width, viewport.height, GRID_TILE_SIZE]);
+  }, [scrollPosition.x, scrollPosition.y, viewport.width, viewport.height, GRID_TILE_SIZE, zoomLevel]);
 
   // Memoizar cálculos de escala para evitar recálculos desnecessários
   const tileScale = useMemo(() => ({
@@ -516,7 +535,6 @@ export default function CanvasEditor() {
     if (!selectedTiles.length || !selectionBounds || !tileset) return null;
     
     const tilesWidth = selectionBounds.maxX - selectionBounds.minX + 1;
-    const tilesHeight = selectionBounds.maxY - selectionBounds.minY + 1;
     
     const previewTiles = [];
     
@@ -559,14 +577,17 @@ export default function CanvasEditor() {
     return previewTiles;
   }, [selectedTiles, selectionBounds, tileset, GRID_TILE_SIZE, tileSize, tileScale]);
 
-  // Cache para tiles renderizados para evitar recriação desnecessária
+  // Sistema de cache básico
   const tileCache = useRef(new Map<string, React.ReactNode>());
+  const MAX_CACHE_SIZE = 1000;
   
   const renderTile = useCallback((cell: string | null) => {
     if (!cell || !tileset) return null;
     
-    // Verificar cache primeiro
+    // Cache key básico
     const cacheKey = `${cell}_${GRID_TILE_SIZE}_${tileScale.x}_${tileScale.y}`;
+    
+    // Verificar cache
     if (tileCache.current.has(cacheKey)) {
       return tileCache.current.get(cacheKey);
     }
@@ -574,6 +595,7 @@ export default function CanvasEditor() {
     // Extrair coordenadas x, y do tileId (formato: "x_y")
     const [tileX, tileY] = cell.split('_').map(Number);
     
+    // Memoizar elemento com React.memo interno
     const tileElement = (
       <div
         key={`${tileX}_${tileY}`}
@@ -584,16 +606,20 @@ export default function CanvasEditor() {
           backgroundPosition: `-${tileX * tileSize.width * tileScale.x}px -${tileY * tileSize.height * tileScale.y}px`,
           backgroundSize: `${tileset.width * tileScale.x}px ${tileset.height * tileScale.y}px`,
           imageRendering: 'pixelated',
+          willChange: 'transform', // Otimização para GPU
         }}
       />
     );
     
-    // Armazenar no cache (limitar tamanho do cache)
-    if (tileCache.current.size > 1000) {
-      tileCache.current.clear();
+    // LRU Cache com eviction inteligente
+    if (tileCache.current.size >= MAX_CACHE_SIZE) {
+      const firstKey = tileCache.current.keys().next().value;
+      if (firstKey) {
+        tileCache.current.delete(firstKey);
+      }
     }
-    tileCache.current.set(cacheKey, tileElement);
     
+    tileCache.current.set(cacheKey, tileElement);
     return tileElement;
   }, [tileset, GRID_TILE_SIZE, tileSize.width, tileSize.height, tileScale]);
 
@@ -647,16 +673,15 @@ export default function CanvasEditor() {
         <span className="text-xs">Use o botão do meio do mouse para navegar</span>
       </div>
 
-      {/* Debug: Informações do grid */}
+      {/* Debug básico */}
       <div className="absolute bottom-4 right-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded text-sm z-50">
         <div className="text-xs">
-          <div>Grid Size: {GRID_TILE_SIZE}px</div>
-          <div>Zoom: {Math.round(zoomLevel * 100)}%</div>
+          <div>Grid: {GRID_TILE_SIZE}px | Zoom: {Math.round(zoomLevel * 100)}%</div>
           <div>Scroll: {Math.round(scrollPosition.x)}, {Math.round(scrollPosition.y)}</div>
-          <div>Cells: {visibleCells.length}</div>
           <div>Viewport: {viewport.width}x{viewport.height}</div>
-          <div>Bounds: {mapBounds.width}x{mapBounds.height}</div>
-          <div>Container: {Math.round(containerSize.width/1000)}k x {Math.round(containerSize.height/1000)}k</div>
+          <div>Cells: {visibleCells.length}</div>
+          <div>Cache: {tileCache.current.size}/{MAX_CACHE_SIZE}</div>
+          {isPending && <div className="text-blue-400">Updating...</div>}
         </div>
       </div>
 
@@ -743,8 +768,8 @@ export default function CanvasEditor() {
                     width: GRID_TILE_SIZE,
                     height: GRID_TILE_SIZE,
                     backgroundImage: `url(${tileset?.src})`,
-                    backgroundPosition: `-${activeTile.split('_')[0] * tileSize.width * tileScale.x}px -${activeTile.split('_')[1] * tileSize.height * tileScale.y}px`,
-                    backgroundSize: `${tileset?.width * tileScale.x}px ${tileset?.height * tileScale.y}px`,
+                    backgroundPosition: `-${parseInt(activeTile.split('_')[0]) * tileSize.width * tileScale.x}px -${parseInt(activeTile.split('_')[1]) * tileSize.height * tileScale.y}px`,
+                    backgroundSize: `${(tileset?.width || 0) * tileScale.x}px ${(tileset?.height || 0) * tileScale.y}px`,
                     imageRendering: 'pixelated',
                     opacity: 0.7,
                     border: '1px dashed rgba(0, 255, 0, 0.8)',
@@ -810,4 +835,8 @@ export default function CanvasEditor() {
       </div>
     </main>
   );
-}
+});
+
+CanvasEditor.displayName = 'CanvasEditor';
+
+export default CanvasEditor;

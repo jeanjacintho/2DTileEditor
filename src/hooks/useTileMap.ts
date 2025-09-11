@@ -15,8 +15,8 @@ function createDefaultLayer(): Layer {
 
 interface TileMapState {
   tileMap: TileMap;
-  history: Array<{ action: string; data: any; timestamp: number }>;
-  future: Array<{ action: string; data: any; timestamp: number }>;
+  history: TileMap[];
+  future: TileMap[];
   activeLayerId: string | null;
   placeTile: (x: number, y: number, tileId: string) => void;
   removeTile: (x: number, y: number) => void;
