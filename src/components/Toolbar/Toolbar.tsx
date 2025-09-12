@@ -1,16 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTileMapStore } from '../../hooks/useTileMap';
 import { useTilesetStore } from '../../hooks/useTileset';
 import { useDrawModeStore } from '../../hooks/useDrawMode';
-import { Download, Redo, Undo } from '@nsmr/pixelart-react';
+import { Download, Redo, Undo, Upload } from '@nsmr/pixelart-react';
 import Input from '../UI/Input';
 import Button from '../UI/Button';
+import ImportMapDialog from '../UI/ImportMapDialog';
 
 export default function Toolbar() {
   const tileMap = useTileMapStore(s => s.tileMap);
   const undo = useTileMapStore(s => s.undo);
   const redo = useTileMapStore(s => s.redo);
   const exportMap = useTileMapStore(s => s.exportMap);
+  const importMap = useTileMapStore(s => s.importMap);
   const getMapBounds = useTileMapStore(s => s.getMapBounds);
   const activeLayerId = useTileMapStore(s => s.activeLayerId);
   const tileSize = useTilesetStore(s => s.tileSize);
@@ -18,6 +20,12 @@ export default function Toolbar() {
   const drawMode = useDrawModeStore(s => s.drawMode);
   const toggleDrawMode = useDrawModeStore(s => s.toggleDrawMode);
   const [tileSizeValue, setTileSizeValue] = useState(tileSize.width);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+
+  // Sincronizar estado local com estado global quando tileSize mudar
+  useEffect(() => {
+    setTileSizeValue(tileSize.width);
+  }, [tileSize.width]);
 
   const handleTileSizeChange = (newSize: number) => {
     setTileSizeValue(newSize);
@@ -86,6 +94,14 @@ export default function Toolbar() {
           ({tileMap.layers.length} layers)
         </span>
         <Button
+          onClick={() => setIsImportDialogOpen(true)}
+          title="Import Map (JSON)"
+          variant="secondary"
+        >
+          <Upload size={14} />
+          Import
+        </Button>
+        <Button
           onClick={() => exportMap(tileSize.width)}
           title="Export Map (JSON)"
         >
@@ -93,6 +109,12 @@ export default function Toolbar() {
           Export
         </Button>
       </div>
+
+      <ImportMapDialog
+        isOpen={isImportDialogOpen}
+        onClose={() => setIsImportDialogOpen(false)}
+        onImport={importMap}
+      />
     </header>
   );
 }

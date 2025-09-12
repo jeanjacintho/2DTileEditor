@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { produce } from 'immer';
 import type { TileMap, Layer } from '../types/index';
+import { useTilesetStore } from './useTileset';
 
 function createDefaultLayer(): Layer {
   return {
@@ -31,6 +32,8 @@ interface TileMapState {
   setActiveLayer: (layerId: string) => void;
   setLayerCollision: (layerId: string, isCollision: boolean) => void;
   exportMap: (tileSize: number) => void;
+  importMap: (file: File) => Promise<void>;
+  centerViewportOnMap: () => void;
   getMapBounds: () => { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number };
 }
 
@@ -348,5 +351,127 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
       
       return state;
     });
+  },
+  importMap: async (file: File) => {
+    try {
+      const text = await file.text();
+      const mapData = JSON.parse(text);
+      
+      // Validar estrutura básica do arquivo
+      if (!mapData.layers || !Array.isArray(mapData.layers)) {
+        throw new Error('Formato de arquivo inválido: layers não encontradas');
+      }
+      
+      // IMPORTANTE: Inverter a ordem das layers para manter a ordem correta
+      // (na exportação as layers são invertidas, então na importação precisamos inverter novamente)
+      const reversedLayers = [...mapData.layers].reverse();
+      
+      // Calcular bounds globais primeiro (como na exportação)
+      let globalMinX = Infinity, globalMinY = Infinity, globalMaxX = -Infinity, globalMaxY = -Infinity;
+      
+      reversedLayers.forEach(layerData => {
+        if (layerData.tiles && Array.isArray(layerData.tiles)) {
+          layerData.tiles.forEach((tile: any) => {
+            if (typeof tile.x === 'number' && typeof tile.y === 'number') {
+              globalMinX = Math.min(globalMinX, tile.x);
+              globalMinY = Math.min(globalMinY, tile.y);
+              globalMaxX = Math.max(globalMaxX, tile.x);
+              globalMaxY = Math.max(globalMaxY, tile.y);
+            }
+          });
+        }
+      });
+      
+      // Se não há tiles, usar valores padrão
+      if (globalMinX === Infinity) {
+        globalMinX = globalMinY = globalMaxX = globalMaxY = 0;
+      }
+      
+      const globalWidth = globalMaxX - globalMinX + 1;
+      const globalHeight = globalMaxY - globalMinY + 1;
+      
+      // Criar layers com matrizes do tamanho global
+      const newLayers: Layer[] = reversedLayers.map((layerData: any, index: number) => {
+        if (!layerData.tiles || !Array.isArray(layerData.tiles)) {
+          throw new Error(`Layer ${index}: formato de tiles inválido`);
+        }
+        
+        // Se não há tiles, criar layer vazia com tamanho global
+        if (layerData.tiles.length === 0) {
+          return {
+            id: `layer_${Date.now()}_${index}`,
+            name: layerData.name || `Layer ${index}`,
+            visible: true,
+            opacity: 1,
+            isCollision: layerData.collider || false,
+            data: Array(globalHeight).fill(null).map(() => Array(globalWidth).fill(null))
+          };
+        }
+        
+        // Criar matriz com dimensões globais
+        const data: (string | null)[][] = Array(globalHeight).fill(null).map(() => Array(globalWidth).fill(null));
+        
+        // Preencher a matriz com os tiles usando coordenadas globais
+        layerData.tiles.forEach((tile: any) => {
+          if (typeof tile.x === 'number' && typeof tile.y === 'number' && tile.id) {
+            const x = tile.x - globalMinX;
+            const y = tile.y - globalMinY;
+            
+            // Verificar se as coordenadas estão dentro dos bounds
+            if (x >= 0 && x < globalWidth && y >= 0 && y < globalHeight) {
+              data[y][x] = tile.id;
+            }
+          }
+        });
+        
+        return {
+          id: `layer_${Date.now()}_${index}`,
+          name: layerData.name || `Layer ${index}`,
+          visible: true,
+          opacity: 1,
+          isCollision: layerData.collider || false,
+          data: data
+        };
+      });
+      
+      const newTileMap: TileMap = {
+        width: globalWidth,
+        height: globalHeight,
+        tileSize: mapData.tileSize || 32,
+        layers: newLayers
+      };
+      
+      // Atualizar estado
+      set(state => ({
+        ...state,
+        tileMap: newTileMap,
+        activeLayerId: newLayers.length > 0 ? newLayers[0].id : null,
+        history: [...state.history, state.tileMap], // Salvar estado anterior no histórico
+        future: [] // Limpar futuro ao importar
+      }));
+      
+      // Atualizar o tileSize no tileset store
+      const tileSizeFromMap = mapData.tileSize || 32;
+      useTilesetStore.getState().setTileSize({ 
+        width: tileSizeFromMap, 
+        height: tileSizeFromMap 
+      });
+      
+      console.log(`Mapa importado com sucesso: ${newLayers.length} layers (ordem corrigida), ${tileSizeFromMap}px tiles`);
+      
+      // Centralizar viewport no mapa importado após um pequeno delay
+      setTimeout(() => {
+        get().centerViewportOnMap();
+      }, 100);
+      
+    } catch (error) {
+      console.error('Erro ao importar mapa:', error);
+      throw new Error(`Erro ao importar mapa: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+    }
+  },
+  centerViewportOnMap: () => {
+    // Disparar evento customizado para que o CanvasEditor possa centralizar o viewport
+    const event = new CustomEvent('centerViewportOnMap');
+    window.dispatchEvent(event);
   },
 }));

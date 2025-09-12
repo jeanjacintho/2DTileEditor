@@ -216,8 +216,14 @@ const CanvasEditor = memo(() => {
       }
     };
 
+    // Escutar evento customizado para centralizar viewport
+    const handleCenterViewport = () => {
+      centerOnContent();
+    };
+
     updateViewport();
     window.addEventListener('resize', updateViewport);
+    window.addEventListener('centerViewportOnMap', handleCenterViewport);
     
     const container = containerRef.current;
     if (container) {
@@ -234,12 +240,13 @@ const CanvasEditor = memo(() => {
 
     return () => {
       window.removeEventListener('resize', updateViewport);
+      window.removeEventListener('centerViewportOnMap', handleCenterViewport);
       if (container) {
         container.removeEventListener('scroll', handleScroll);
       }
       clearTimeout(initTimer);
     };
-  }, [isInitialized, viewport.width, viewport.height, clampScroll]);
+  }, [isInitialized, viewport.width, viewport.height, clampScroll, centerOnContent]);
 
   const handleCellClick = (x: number, y: number, isRightClick: boolean = false) => {
     if (isRightClick) {
