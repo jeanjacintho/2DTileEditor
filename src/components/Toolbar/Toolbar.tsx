@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useTileMapStore } from '../../hooks/useTileMap';
 import { useTilesetStore } from '../../hooks/useTileset';
 import { useDrawModeStore } from '../../hooks/useDrawMode';
@@ -19,16 +19,9 @@ export default function Toolbar() {
   const setTileSize = useTilesetStore(s => s.setTileSize);
   const drawMode = useDrawModeStore(s => s.drawMode);
   const toggleDrawMode = useDrawModeStore(s => s.toggleDrawMode);
-  const [tileSizeValue, setTileSizeValue] = useState(tileSize.width);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
 
-  // Sincronizar estado local com estado global quando tileSize mudar
-  useEffect(() => {
-    setTileSizeValue(tileSize.width);
-  }, [tileSize.width]);
-
   const handleTileSizeChange = (newSize: number) => {
-    setTileSizeValue(newSize);
     setTileSize({ width: newSize, height: newSize });
   };
 
@@ -58,7 +51,7 @@ export default function Toolbar() {
         <span className="text-sm text-custom-white">Tile size:</span>
         <Input
           type="number"
-          value={tileSizeValue}
+          value={tileSize.width}
           onChange={(e) => handleTileSizeChange(Math.max(1, Number(e.target.value)))}
           min="1"
           size="md"
@@ -110,11 +103,11 @@ export default function Toolbar() {
         </Button>
       </div>
 
-      <ImportMapDialog
-        isOpen={isImportDialogOpen}
-        onClose={() => setIsImportDialogOpen(false)}
-        onImport={importMap}
-      />
+        <ImportMapDialog
+          isOpen={isImportDialogOpen}
+          onClose={() => setIsImportDialogOpen(false)}
+          onImport={importMap}
+        />
     </header>
   );
 }

@@ -23,30 +23,51 @@ const CheckCircleIcon = ({ size = 16 }: { size?: number }) => (
 interface ImportMapDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onImport: (file: File) => Promise<void>;
+  onImport: (files: { mapFile: File; tilesFile?: File }) => Promise<void>;
 }
 
 export default function ImportMapDialog({ isOpen, onClose, onImport }: ImportMapDialogProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<{ mapFile: File | null; tilesFile: File | null }>({
+    mapFile: null,
+    tilesFile: null
+  });
   const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      // Validar tipo de arquivo
-      if (!file.name.toLowerCase().endsWith('.json')) {
-        setError('Por favor, selecione um arquivo JSON válido.');
-        setSelectedFile(null);
-        return;
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
+
+    let mapFile: File | null = null;
+    let tilesFile: File | null = null;
+
+    // Separar arquivos por tipo
+    files.forEach(file => {
+      const fileName = file.name.toLowerCase();
+      if (fileName === 'map.json') {
+        mapFile = file;
+      } else if (fileName === 'tiles.json') {
+        tilesFile = file;
+      } else if (fileName.endsWith('.json')) {
+        // Se não tem nome específico, assumir que é map.json se não tiver um ainda
+        if (!mapFile) {
+          mapFile = file;
+        }
       }
-      
-      setSelectedFile(file);
-      setError(null);
-      setSuccess(false);
+    });
+
+    // Validar se pelo menos o map.json foi selecionado
+    if (!mapFile) {
+      setError('Por favor, selecione pelo menos um arquivo map.json válido.');
+      setSelectedFiles({ mapFile: null, tilesFile: null });
+      return;
     }
+
+    setSelectedFiles({ mapFile, tilesFile });
+    setError(null);
+    setSuccess(false);
   };
 
   const handleFileButtonClick = () => {
@@ -59,14 +80,17 @@ export default function ImportMapDialog({ isOpen, onClose, onImport }: ImportMap
   };
 
   const handleImport = async () => {
-    if (!selectedFile) return;
+    if (!selectedFiles.mapFile) return;
 
     setIsImporting(true);
     setError(null);
     setSuccess(false);
 
     try {
-      await onImport(selectedFile);
+      await onImport({ 
+        mapFile: selectedFiles.mapFile!, 
+        tilesFile: selectedFiles.tilesFile || undefined 
+      });
       setSuccess(true);
       setTimeout(() => {
         onClose();
@@ -80,7 +104,7 @@ export default function ImportMapDialog({ isOpen, onClose, onImport }: ImportMap
   };
 
   const handleClose = () => {
-    setSelectedFile(null);
+    setSelectedFiles({ mapFile: null, tilesFile: null });
     setError(null);
     setSuccess(false);
     setIsImporting(false);
@@ -100,6 +124,7 @@ export default function ImportMapDialog({ isOpen, onClose, onImport }: ImportMap
         ref={fileInputRef}
         type="file"
         accept=".json"
+        multiple
         onChange={handleFileSelect}
         className="hidden"
         disabled={isImporting}
@@ -114,6 +139,7 @@ export default function ImportMapDialog({ isOpen, onClose, onImport }: ImportMap
         ref={fileInputRef}
         type="file"
         accept=".json"
+        multiple
         onChange={handleFileSelect}
         className="hidden"
         disabled={isImporting}
@@ -151,9 +177,10 @@ export default function ImportMapDialog({ isOpen, onClose, onImport }: ImportMap
           {/* Área de upload */}
           <div className="border-2 border-dashed border-custom-light-gray p-6 text-center bg-custom-pure-black">
             <Upload size={32} className="mx-auto text-custom-light-gray mb-2" />
-            <p className="text-custom-white mb-2">Selecione um arquivo de mapa (.json)</p>
+            <p className="text-custom-white mb-2">Selecione arquivos de mapa (.json)</p>
             <p className="text-sm text-custom-light-gray mb-4">
-              O arquivo deve conter layers com tiles no formato: {`{id: "x_y", x: number, y: number}`}
+              Selecione map.json (obrigatório) e opcionalmente tiles.json<br/>
+              O map.json deve conter layers com tiles no formato: {`{id: "x_y", x: number, y: number}`}
             </p>
             
             <button
@@ -165,27 +192,54 @@ export default function ImportMapDialog({ isOpen, onClose, onImport }: ImportMap
             </button>
           </div>
 
-          {/* Arquivo selecionado */}
-          {selectedFile && (
-            <div className="p-3 bg-custom-medium-gray border border-custom-light-gray">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-custom-white font-medium">{selectedFile.name}</p>
-                  <p className="text-sm text-custom-light-gray">
-                    {(selectedFile.size / 1024).toFixed(1)} KB
-                  </p>
+          {/* Arquivos selecionados */}
+          {(selectedFiles.mapFile || selectedFiles.tilesFile) && (
+            <div className="space-y-2">
+              {selectedFiles.mapFile && (
+                <div className="p-3 bg-custom-medium-gray border border-custom-light-gray">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-custom-white font-medium">📄 {selectedFiles.mapFile.name}</p>
+                      <p className="text-sm text-custom-light-gray">
+                        {(selectedFiles.mapFile.size / 1024).toFixed(1)} KB
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedFiles(prev => ({ ...prev, mapFile: null }));
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                      className="text-custom-light-gray hover:text-custom-white transition-colors"
+                      disabled={isImporting}
+                    >
+                      <XIcon size={16} />
+                    </button>
+                  </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setSelectedFile(null);
-                    if (fileInputRef.current) fileInputRef.current.value = '';
-                  }}
-                  className="text-custom-light-gray hover:text-custom-white transition-colors"
-                  disabled={isImporting}
-                >
-                  <XIcon size={16} />
-                </button>
-              </div>
+              )}
+              
+              {selectedFiles.tilesFile && (
+                <div className="p-3 bg-custom-medium-gray border border-custom-light-gray">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-custom-white font-medium">🎨 {selectedFiles.tilesFile.name}</p>
+                      <p className="text-sm text-custom-light-gray">
+                        {(selectedFiles.tilesFile.size / 1024).toFixed(1)} KB
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedFiles(prev => ({ ...prev, tilesFile: null }));
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                      className="text-custom-light-gray hover:text-custom-white transition-colors"
+                      disabled={isImporting}
+                    >
+                      <XIcon size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -200,7 +254,7 @@ export default function ImportMapDialog({ isOpen, onClose, onImport }: ImportMap
             </button>
             <button
               onClick={handleImport}
-              disabled={!selectedFile || isImporting}
+              disabled={!selectedFiles.mapFile || isImporting}
               className="flex-1 px-4 py-2 bg-custom-color hover:bg-blue-600 text-custom-white border border-black shadow-button font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-custom-color focus:ring-offset-2 focus:ring-offset-custom-black disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isImporting ? 'Importando...' : 'Importar'}

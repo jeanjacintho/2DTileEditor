@@ -32,7 +32,7 @@ interface TileMapState {
   setActiveLayer: (layerId: string) => void;
   setLayerCollision: (layerId: string, isCollision: boolean) => void;
   exportMap: (tileSize: number) => void;
-  importMap: (file: File) => Promise<void>;
+  importMap: (files: { mapFile: File; tilesFile?: File }) => Promise<void>;
   centerViewportOnMap: () => void;
   getMapBounds: () => { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number };
 }
@@ -352,10 +352,21 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
       return state;
     });
   },
-  importMap: async (file: File) => {
+  importMap: async (files: { mapFile: File; tilesFile?: File }) => {
     try {
-      const text = await file.text();
-      const mapData = JSON.parse(text);
+      const mapText = await files.mapFile.text();
+      const mapData = JSON.parse(mapText);
+      
+      // Processar tiles.json se fornecido
+      let tilesData: any = null;
+      if (files.tilesFile) {
+        try {
+          const tilesText = await files.tilesFile.text();
+          tilesData = JSON.parse(tilesText);
+        } catch (error) {
+          console.warn('Erro ao processar tiles.json:', error);
+        }
+      }
       
       // Validar estrutura básica do arquivo
       if (!mapData.layers || !Array.isArray(mapData.layers)) {
@@ -403,7 +414,7 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
             name: layerData.name || `Layer ${index}`,
             visible: true,
             opacity: 1,
-            isCollision: layerData.collider || false,
+            isCollision: Boolean(layerData.collider), // Garantir que seja boolean
             data: Array(globalHeight).fill(null).map(() => Array(globalWidth).fill(null))
           };
         }
@@ -429,7 +440,7 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
           name: layerData.name || `Layer ${index}`,
           visible: true,
           opacity: 1,
-          isCollision: layerData.collider || false,
+          isCollision: Boolean(layerData.collider), // Garantir que seja boolean
           data: data
         };
       });
@@ -456,6 +467,20 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
         width: tileSizeFromMap, 
         height: tileSizeFromMap 
       });
+      
+      // Processar tiles.json se fornecido
+      if (tilesData && tilesData.tiles && Array.isArray(tilesData.tiles)) {
+        console.log(`Processando ${tilesData.tiles.length} tiles do tiles.json`);
+        
+        // Aqui você pode adicionar lógica para processar os tiles
+        // Por exemplo, criar um tileset virtual ou carregar uma imagem
+        // Por enquanto, apenas logamos as informações
+        tilesData.tiles.forEach((tile: any, index: number) => {
+          if (index < 5) { // Log apenas os primeiros 5 para não poluir o console
+            console.log(`Tile ${tile.id}: posição (${tile.x}, ${tile.y}), collision: ${tile.collision}`);
+          }
+        });
+      }
       
       console.log(`Mapa importado com sucesso: ${newLayers.length} layers (ordem corrigida), ${tileSizeFromMap}px tiles`);
       
