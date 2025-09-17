@@ -395,14 +395,20 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
       
       // IMPORTANTE: Usar a ordem das layers como estão no arquivo
       // (sem inverter, já que agora o usuário pode reordenar)
-      const layers = mapData.layers;
+      type ImportedLayer = {
+        name?: string;
+        tiles?: Array<{ id?: string; x?: number; y?: number }>;
+        collider?: boolean;
+      };
+
+      const layers: ImportedLayer[] = mapData.layers as ImportedLayer[];
       
       // Calcular bounds globais primeiro (como na exportação)
       let globalMinX = Infinity, globalMinY = Infinity, globalMaxX = -Infinity, globalMaxY = -Infinity;
       
-      layers.forEach(layerData => {
+      layers.forEach((layerData: ImportedLayer) => {
         if (layerData.tiles && Array.isArray(layerData.tiles)) {
-          layerData.tiles.forEach((tile: any) => {
+          layerData.tiles.forEach((tile: { x?: number; y?: number }) => {
             if (typeof tile.x === 'number' && typeof tile.y === 'number') {
               globalMinX = Math.min(globalMinX, tile.x);
               globalMinY = Math.min(globalMinY, tile.y);
@@ -422,7 +428,7 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
       const globalHeight = globalMaxY - globalMinY + 1;
       
       // Criar layers com matrizes do tamanho global
-      const newLayers: Layer[] = layers.map((layerData: any, index: number) => {
+      const newLayers: Layer[] = layers.map((layerData: ImportedLayer, index: number) => {
         if (!layerData.tiles || !Array.isArray(layerData.tiles)) {
           throw new Error(`Layer ${index}: formato de tiles inválido`);
         }
@@ -443,7 +449,7 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
         const data: (string | null)[][] = Array(globalHeight).fill(null).map(() => Array(globalWidth).fill(null));
         
         // Preencher a matriz com os tiles usando coordenadas globais
-        layerData.tiles.forEach((tile: any) => {
+        layerData.tiles.forEach((tile: { id?: string; x?: number; y?: number }) => {
           if (typeof tile.x === 'number' && typeof tile.y === 'number' && tile.id) {
             const x = tile.x - globalMinX;
             const y = tile.y - globalMinY;
