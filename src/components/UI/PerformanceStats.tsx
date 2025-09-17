@@ -63,7 +63,7 @@ const PerformanceStats = memo(({
       {/* Frame Time */}
       <div className="mb-1">
         <span className="text-gray-300">Frame Time:</span>
-        <span className="ml-2 font-mono text-blue-400">
+        <span className="ml-2 font-mono text-custom-color">
           {stats.avgFrameTime.toFixed(2)}ms
         </span>
       </div>

@@ -688,7 +688,7 @@ const CanvasEditor = memo(() => {
           <div>Viewport: {viewport.width}x{viewport.height}</div>
           <div>Cells: {visibleCells.length}</div>
           <div>Cache: {tileCache.current.size}/{MAX_CACHE_SIZE}</div>
-          {isPending && <div className="text-blue-400">Updating...</div>}
+          {isPending && <div className="text-custom-color">Updating...</div>}
         </div>
       </div>
 

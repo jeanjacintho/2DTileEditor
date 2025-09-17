@@ -186,7 +186,7 @@ export default function ImportMapDialog({ isOpen, onClose, onImport }: ImportMap
             <button
               onClick={handleFileButtonClick}
               disabled={isImporting}
-              className="w-full px-4 py-2 bg-custom-color hover:bg-blue-600 text-custom-white border border-black shadow-button font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-custom-color focus:ring-offset-2 focus:ring-offset-custom-black disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2 bg-custom-color hover:bg-custom-color-dark text-custom-white border border-black shadow-button font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-custom-color focus:ring-offset-2 focus:ring-offset-custom-black disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Selecionar Arquivo
             </button>
@@ -255,7 +255,7 @@ export default function ImportMapDialog({ isOpen, onClose, onImport }: ImportMap
             <button
               onClick={handleImport}
               disabled={!selectedFiles.mapFile || isImporting}
-              className="flex-1 px-4 py-2 bg-custom-color hover:bg-blue-600 text-custom-white border border-black shadow-button font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-custom-color focus:ring-offset-2 focus:ring-offset-custom-black disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2 bg-custom-color hover:bg-custom-color-dark text-custom-white border border-black shadow-button font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-custom-color focus:ring-offset-2 focus:ring-offset-custom-black disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isImporting ? 'Importando...' : 'Importar'}
             </button>

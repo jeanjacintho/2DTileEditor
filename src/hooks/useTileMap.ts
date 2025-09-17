@@ -31,6 +31,7 @@ interface TileMapState {
   setLayerName: (layerId: string, name: string) => void;
   setActiveLayer: (layerId: string) => void;
   setLayerCollision: (layerId: string, isCollision: boolean) => void;
+  reorderLayers: (fromIndex: number, toIndex: number) => void;
   exportMap: (tileSize: number) => void;
   importMap: (files: { mapFile: File; tilesFile?: File }) => Promise<void>;
   centerViewportOnMap: () => void;
@@ -228,6 +229,25 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
       };
     });
   },
+  reorderLayers: (fromIndex, toIndex) => {
+    if (fromIndex === toIndex) return;
+    
+    set(state => {
+      const layers = [...state.tileMap.layers];
+      const [movedLayer] = layers.splice(fromIndex, 1);
+      layers.splice(toIndex, 0, movedLayer);
+      
+      const next = produce(state.tileMap, draft => {
+        draft.layers = layers;
+      });
+      
+      return {
+        tileMap: next,
+        history: [...state.history, state.tileMap],
+        future: [],
+      };
+    });
+  },
   getMapBounds: () => {
     const state = get();
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -268,9 +288,9 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
       const bounds = get().getMapBounds();
       
       // Converter o formato de dados para o formato especificado
-      // Ordem: primeiro layer primeiro (Layer_0, Layer_1, Layer_2, etc.)
-      // Como as layers estão em ordem reversa no array (mais nova primeiro), precisamos reverter para exportar na ordem cronológica
-      const layers = [...state.tileMap.layers].reverse().map(layer => {
+      // Inverter a ordem das layers para que a ordem de exportação reflita a ordem visual
+      // (base para topo, já que visualmente a base é renderizada por último)
+      const layers = state.tileMap.layers.slice().reverse().map(layer => {
         const tiles: Array<{id: string, x: number, y: number}> = [];
         
         // Converter a matriz de dados para lista de tiles, ajustando para coordenadas relativas
@@ -373,14 +393,14 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
         throw new Error('Formato de arquivo inválido: layers não encontradas');
       }
       
-      // IMPORTANTE: Inverter a ordem das layers para manter a ordem correta
-      // (na exportação as layers são invertidas, então na importação precisamos inverter novamente)
-      const reversedLayers = [...mapData.layers].reverse();
+      // IMPORTANTE: Usar a ordem das layers como estão no arquivo
+      // (sem inverter, já que agora o usuário pode reordenar)
+      const layers = mapData.layers;
       
       // Calcular bounds globais primeiro (como na exportação)
       let globalMinX = Infinity, globalMinY = Infinity, globalMaxX = -Infinity, globalMaxY = -Infinity;
       
-      reversedLayers.forEach(layerData => {
+      layers.forEach(layerData => {
         if (layerData.tiles && Array.isArray(layerData.tiles)) {
           layerData.tiles.forEach((tile: any) => {
             if (typeof tile.x === 'number' && typeof tile.y === 'number') {
@@ -402,7 +422,7 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
       const globalHeight = globalMaxY - globalMinY + 1;
       
       // Criar layers com matrizes do tamanho global
-      const newLayers: Layer[] = reversedLayers.map((layerData: any, index: number) => {
+      const newLayers: Layer[] = layers.map((layerData: any, index: number) => {
         if (!layerData.tiles || !Array.isArray(layerData.tiles)) {
           throw new Error(`Layer ${index}: formato de tiles inválido`);
         }

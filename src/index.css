@@ -9,7 +9,8 @@
     --color-medium-gray: #2b2d31;
     --color-black: #1e1f22;
     --color-pure-black: #000000;
-    --color-custom: #FF9500;
+    --color-custom: #8a2be2;
+    --color-custom-dark: #7b1fa2;
   }
 }
 
@@ -20,6 +21,7 @@
   .bg-custom-black { background-color: var(--color-black); }
   .bg-custom-pure-black { background-color: var(--color-pure-black); }
   .bg-custom-color { background-color: var(--color-custom); }
+  .bg-custom-color-dark { background-color: var(--color-custom-dark); }
   
   .text-custom-white { color: var(--color-white); }
   .text-custom-light-gray { color: var(--color-light-gray); }

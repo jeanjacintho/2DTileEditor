@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTileMapStore } from '../../hooks/useTileMap';
-import { Close, Copy, Edit, Minus, Plus, Shield, Visible } from '@nsmr/pixelart-react';
+import { Close, Copy, Edit, Minus, Plus, Shield, Visible, ArrowUp, ArrowDown } from '@nsmr/pixelart-react';
 import Input from '../UI/Input';
 import Button from '../UI/Button';
 
@@ -14,9 +14,23 @@ export default function LayerPanel() {
   const setLayerName = useTileMapStore(s => s.setLayerName);
   const setActiveLayer = useTileMapStore(s => s.setActiveLayer);
   const setLayerCollision = useTileMapStore(s => s.setLayerCollision);
+  const reorderLayers = useTileMapStore(s => s.reorderLayers);
 
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+
+  // Funções simples para mover layers
+  const moveLayerUp = (index: number) => {
+    if (index > 0) {
+      reorderLayers(index, index - 1);
+    }
+  };
+
+  const moveLayerDown = (index: number) => {
+    if (index < tileMap.layers.length - 1) {
+      reorderLayers(index, index + 1);
+    }
+  };
 
   function handleEditName(layerId: string, currentName: string) {
     setEditingLayerId(layerId);
@@ -68,8 +82,9 @@ export default function LayerPanel() {
       </div>
 
       <div className="flex-1 overflow-auto">
-        {tileMap.layers.map((layer) => {
+        {tileMap.layers.map((layer, index) => {
           const tileCount = countTilesInLayer(layer);
+          
           return (
             <div
               key={layer.id}
@@ -81,6 +96,32 @@ export default function LayerPanel() {
               onClick={() => setActiveLayer(layer.id)}
             >
               <div className="flex items-center gap-2">
+                {/* Controles de movimento */}
+                <div className="flex gap-0.5">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      moveLayerUp(index);
+                    }}
+                    disabled={index === 0}
+                    className="w-4 h-4 flex items-center justify-center text-custom-light-gray hover:text-custom-color disabled:opacity-30 disabled:cursor-not-allowed bg-custom-black/50 hover:bg-custom-black/80 rounded border border-custom-light-gray/30 hover:border-custom-color/50 transition-all"
+                    title="Move Layer Up"
+                  >
+                    <ArrowUp size={10} />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      moveLayerDown(index);
+                    }}
+                    disabled={index === tileMap.layers.length - 1}
+                    className="w-4 h-4 flex items-center justify-center text-custom-light-gray hover:text-custom-color disabled:opacity-30 disabled:cursor-not-allowed bg-custom-black/50 hover:bg-custom-black/80 rounded border border-custom-light-gray/30 hover:border-custom-color/50 transition-all"
+                    title="Move Layer Down"
+                  >
+                    <ArrowDown size={10} />
+                  </button>
+                </div>
+
                 {/* Visibility toggle */}
                 <button
                   onClick={(e) => {

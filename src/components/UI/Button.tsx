@@ -12,9 +12,9 @@ interface ButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>
 
 const buttonVariants = {
   ghost: 'bg-transparent hover:bg-custom-light-gray text-custom-white hover:text-custom-white',
-  primary: 'bg-custom-color hover:bg-blue-600 text-custom-white border border-black shadow-button',
+  primary: 'bg-custom-color hover:bg-custom-color-dark text-custom-white border border-black shadow-button',
   secondary: 'bg-custom-light-gray hover:bg-custom-black text-custom-white shadow-button',
-  link: 'bg-transparent text-custom-color hover:text-blue-400 underline',
+  link: 'bg-transparent text-custom-color hover:text-custom-color-dark underline',
   outline: 'bg-transparent border border-custom-light-gray hover:bg-custom-light-gray text-custom-white shadow-button',
   icon: 'bg-transparent hover:bg-custom-light-gray text-custom-light-gray hover:text-custom-white p-2'
 };

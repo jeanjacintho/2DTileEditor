@@ -1,5 +1,6 @@
 import { memo, useMemo, useCallback, useRef, useState, useEffect } from 'react';
 import { useTilesetStore } from '../../hooks/useTileset';
+import { Folder } from '@nsmr/pixelart-react';
 
 const BASE_TILE_DISPLAY_SIZE = 32;
 
@@ -38,7 +39,7 @@ const TileElement = memo(({
     if (isActive) {
       return `${baseClasses} border-custom-color bg-custom-color/30`;
     } else if (isSelected) {
-      return `${baseClasses} border-blue-400 bg-blue-400/20`;
+      return `${baseClasses} border-custom-color bg-custom-color/20`;
     }
     
     return baseClasses;
@@ -71,7 +72,7 @@ const TileElement = memo(({
       )}
       {isSelected && !isActive && (
         <div className="w-full h-full flex items-center justify-center">
-          <div className="w-2 h-2 bg-blue-400 rounded-full opacity-60"></div>
+          <div className="w-2 h-2 bg-custom-color rounded-full opacity-60"></div>
         </div>
       )}
     </div>
@@ -321,7 +322,7 @@ const TilesetGrid = memo(() => {
           <span className="text-xs bg-black bg-opacity-50 text-white px-2 py-1 rounded">
             {Math.round(zoomLevel * 100)}%
           </span>
-          <span className="text-xs bg-blue-500 bg-opacity-50 text-white px-2 py-1 rounded">
+          <span className="text-xs bg-custom-color bg-opacity-50 text-white px-2 py-1 rounded">
             {tilesetDimensions.cols * tilesetDimensions.rows} tiles
           </span>
         </div>
@@ -400,7 +401,7 @@ const TilesetGrid = memo(() => {
       ) : (
         <div className="border border-custom-light-gray bg-custom-pure-black h-48 flex items-center justify-center text-custom-light-gray">
           <div className="flex flex-col items-center justify-center text-center">
-            <div className="text-2xl mb-2">📁</div>
+            <Folder size={32} className="text-custom-light-gray mb-2" />
             <div className="text-sm">No tileset loaded</div>
             <div className="text-xs mt-1">Click "Import Tileset" to load an image</div>
           </div>
@@ -415,7 +416,7 @@ const TilesetGrid = memo(() => {
               <div className="font-medium">Selected Tiles: {tileInfo.count}</div>
               <div className="text-custom-light-gray">Area: {tileInfo.area}</div>
               <div className="text-custom-light-gray">Size: {tileSize.width} x {tileSize.height}</div>
-              <div className="text-blue-400 mt-1">Active: {tileInfo.activeTile}</div>
+              <div className="text-custom-color mt-1">Active: {tileInfo.activeTile}</div>
             </>
           ) : (
             <>

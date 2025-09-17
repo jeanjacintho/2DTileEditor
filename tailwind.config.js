@@ -12,7 +12,8 @@ export default {
         'custom-medium-gray': '#2b2d31',
         'custom-black': '#1e1f22',
         'custom-pure-black': '#000000',
-        'custom-color': '#5964ea',
+        'custom-color': '#8a2be2',
+        'custom-color-dark': '#7b1fa2',
       }
     },
   },
