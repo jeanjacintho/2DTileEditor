@@ -40,7 +40,7 @@ const CanvasEditor = memo(() => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Tamanho base do grid
-  const BASE_TILE_SIZE = 32;
+  const BASE_TILE_SIZE = tileSize.width || 32;
   const GRID_TILE_SIZE = BASE_TILE_SIZE * zoomLevel;
 
   // Memoizar bounds do mapa para evitar recálculos desnecessários

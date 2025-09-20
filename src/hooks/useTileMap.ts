@@ -403,32 +403,14 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
 
       const layers: ImportedLayer[] = mapData.layers as ImportedLayer[];
       
-      // Calcular bounds globais primeiro (como na exportação)
-      let globalMinX = Infinity, globalMinY = Infinity, globalMaxX = -Infinity, globalMaxY = -Infinity;
-      
-      layers.forEach((layerData: ImportedLayer) => {
-        if (layerData.tiles && Array.isArray(layerData.tiles)) {
-          layerData.tiles.forEach((tile: { x?: number; y?: number }) => {
-            if (typeof tile.x === 'number' && typeof tile.y === 'number') {
-              globalMinX = Math.min(globalMinX, tile.x);
-              globalMinY = Math.min(globalMinY, tile.y);
-              globalMaxX = Math.max(globalMaxX, tile.x);
-              globalMaxY = Math.max(globalMaxY, tile.y);
-            }
-          });
-        }
-      });
-      
-      // Se não há tiles, usar valores padrão
-      if (globalMinX === Infinity) {
-        globalMinX = globalMinY = globalMaxX = globalMaxY = 0;
-      }
-      
-      const globalWidth = globalMaxX - globalMinX + 1;
-      const globalHeight = globalMaxY - globalMinY + 1;
+      // Usar as dimensões do mapa diretamente do arquivo
+      // As coordenadas no arquivo já são relativas aos bounds (0,0) até (mapWidth-1, mapHeight-1)
+      const globalWidth = mapData.mapWidth || 1;
+      const globalHeight = mapData.mapHeight || 1;
       
       // Criar layers com matrizes do tamanho global
-      const newLayers: Layer[] = layers.map((layerData: ImportedLayer, index: number) => {
+      // Inverter a ordem das layers para manter a ordem visual correta (base para topo)
+      const newLayers: Layer[] = layers.slice().reverse().map((layerData: ImportedLayer, index: number) => {
         if (!layerData.tiles || !Array.isArray(layerData.tiles)) {
           throw new Error(`Layer ${index}: formato de tiles inválido`);
         }
@@ -448,11 +430,12 @@ export const useTileMapStore = create<TileMapState>((set, get) => ({
         // Criar matriz com dimensões globais
         const data: (string | null)[][] = Array(globalHeight).fill(null).map(() => Array(globalWidth).fill(null));
         
-        // Preencher a matriz com os tiles usando coordenadas globais
+        // Preencher a matriz com os tiles usando coordenadas diretas do arquivo
         layerData.tiles.forEach((tile: { id?: string; x?: number; y?: number }) => {
           if (typeof tile.x === 'number' && typeof tile.y === 'number' && tile.id) {
-            const x = tile.x - globalMinX;
-            const y = tile.y - globalMinY;
+            // As coordenadas no arquivo já são relativas aos bounds (0,0) até (mapWidth-1, mapHeight-1)
+            const x = tile.x;
+            const y = tile.y;
             
             // Verificar se as coordenadas estão dentro dos bounds
             if (x >= 0 && x < globalWidth && y >= 0 && y < globalHeight) {
